@@ -4,7 +4,7 @@
 # (Environment tab) - it is marked sync:false so it is NOT committed here.
 services:
   - type: web
-    name: devteam-ai
+    name: enterprise-devai
     runtime: python
     plan: free
     buildCommand: pip install -r requirements-web.txt
