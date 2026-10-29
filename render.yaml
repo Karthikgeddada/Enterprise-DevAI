@@ -1,0 +1,23 @@
+# Render deployment for the DevTeam AI FastAPI backend.
+# Docs: https://render.com/docs/blueprint-spec
+# After the first deploy, set OPENROUTER_API_KEY in the Render dashboard
+# (Environment tab) - it is marked sync:false so it is NOT committed here.
+services:
+  - type: web
+    name: devteam-ai
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.10"
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.3-70b-instruct:free
+      # Optional: lock CORS to your Vercel frontend URL (default allows all)
+      # - key: ALLOWED_ORIGIN
+      #   value: https://your-app.vercel.app
+      - key: OPENROUTER_API_KEY
+        sync: false

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevTeam AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+</head>
+<body>
+    <nav class="nav">
+        <a class="nav-brand" href="/">DevTeam&nbsp;AI</a>
+        <span class="nav-caption">Autonomous Software Studio</span>
+    </nav>
+
+    <header class="hero">
+        <h1>Describe it.<br>Your team builds it.</h1>
+        <p>One prompt becomes a complete project — architecture, code, tests and docs — built by an AI team.</p>
+    </header>
+
+    <main>
+        <section class="card">
+            <textarea id="promptInput" rows="4" placeholder="Describe the project you want. For example: Build a REST API for a todo app with FastAPI, SQLite storage and tests…"></textarea>
+            <div class="prompt-actions">
+                <button id="generateBtn" class="btn-primary">Generate</button>
+                <span id="errorMsg" class="error-msg hidden"></span>
+            </div>
+        </section>
+
+        <section class="card hidden" id="statusCard">
+            <div class="progress-head">
+                <h2>Progress</h2>
+                <span id="progressText">0%</span>
+            </div>
+            <div class="progress-bar"><div id="progressBarFill"></div></div>
+            <ol class="steps" id="stepsList">
+                <li data-step="requirements">Requirements</li>
+                <li data-step="architecture">Architecture</li>
+                <li data-step="coding">Code</li>
+                <li data-step="review">Review</li>
+                <li data-step="testing">Tests</li>
+                <li data-step="docs">Docs</li>
+            </ol>
+        </section>
+
+        <section class="card hidden" id="logsCard">
+            <h2>Activity</h2>
+            <div id="logsTerminal" class="terminal">Waiting…</div>
+        </section>
+
+        <section class="card hidden" id="resultsSection">
+            <div class="results-head">
+                <h2>Generated Files</h2>
+                <a id="downloadBtn" class="btn-secondary" href="#">Download ZIP</a>
+            </div>
+            <div class="explorer">
+                <ul id="fileList" class="file-list"></ul>
+                <pre class="code-preview"><code id="codeViewer">Select a file to preview</code></pre>
+            </div>
+        </section>
+    </main>
+
+    <footer>DevTeam AI &middot; powered by <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a></footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,1 +1,0 @@
-{"test_mod": "def test_mod():\n    assert 1 % 1 == 0\n", "test_pow": "def test_pow():\n    assert 1 ** 1 == 1\n"}

@@ -20,6 +20,14 @@ class ProviderRegistry:
 
     def _register_all(self):
         """Register all known providers. Safe to call even if deps are missing."""
+        # OpenRouter (preferred: one key, many models)
+        try:
+            from providers.openrouter_provider import OpenRouterProvider
+            openrouter = OpenRouterProvider()
+            self._providers["openrouter"] = openrouter
+        except Exception:
+            pass
+
         # Gemini
         try:
             from providers.gemini_provider import GeminiProvider
@@ -52,8 +60,8 @@ class ProviderRegistry:
         except Exception:
             pass
 
-        # Set fallback chain: prefer hosted providers, then local
-        self._fallback_chain = [p for p in ["gemini", "deepseek", "qwen", "ollama"] if p in self._providers]
+        # Set fallback chain: prefer OpenRouter, then other hosted providers, then local
+        self._fallback_chain = [p for p in ["openrouter", "gemini", "deepseek", "qwen", "ollama"] if p in self._providers]
 
     def get_provider(self, name: str) -> Optional[BaseProvider]:
         return self._providers.get(name)

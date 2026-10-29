@@ -10,14 +10,18 @@ try:
     import streamlit as st
     if "GROQ_API_KEY" in st.secrets:
         os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+    if "OPENROUTER_API_KEY" in st.secrets:
+        os.environ["OPENROUTER_API_KEY"] = st.secrets["OPENROUTER_API_KEY"]
 except Exception:
     pass
 
 # -----------------------------
 # LLM Provider Configuration
 # -----------------------------
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama-3.3-70b-versatile" if LLM_PROVIDER == "groq" else "llama3:8b")
 
 # -----------------------------
@@ -33,6 +37,13 @@ _key_index = 0
 _lock = threading.Lock()
 
 def get_async_client():
+    if LLM_PROVIDER == "openrouter":
+        from openai import AsyncOpenAI
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise Exception("OPENROUTER_API_KEY is missing! Get one at https://openrouter.ai/keys and set it in your environment (or .env / Streamlit Secrets).")
+        return AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL), "openrouter"
+
     if LLM_PROVIDER == "ollama":
         from openai import AsyncOpenAI
         return AsyncOpenAI(
@@ -74,6 +85,20 @@ async def generate_response(prompt_or_messages) -> str:
             return response.choices[0].message.content
         except Exception as e:
             raise Exception(f"Local LLM failed. Ensure Ollama is running at {OLLAMA_BASE_URL}. Original error: {str(e)}")
+
+    # OpenRouter (default): one key, many models
+    if LLM_PROVIDER == "openrouter":
+        try:
+            client, _ = get_async_client()
+            response = await client.chat.completions.create(
+                model=OPENROUTER_MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=4096
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise Exception(f"OpenRouter API error: {str(e)}")
 
     # Groq Key Failover Logic
     last_error = "Unknown error"

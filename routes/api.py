@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
-from services.project_service import start_generation, get_status, get_files
+from services.generation_service import start_generation, get_status, get_files
 
 router = APIRouter()
 
@@ -11,7 +11,10 @@ class PromptRequest(BaseModel):
 
 @router.post("/generate")
 async def generate_project(req: PromptRequest):
-    run_id = await start_generation(req.prompt)
+    try:
+        run_id = await start_generation(req.prompt)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"run_id": run_id, "message": "Generation started"}
 
 @router.get("/status/{run_id}")
@@ -27,7 +30,7 @@ async def get_project_status(run_id: str):
 @router.get("/files/{run_id}")
 async def get_project_files(run_id: str):
     files = get_files(run_id)
-    if not files:
+    if files is None:
         raise HTTPException(status_code=404, detail="Files not found")
     return {"files": files}
 
@@ -41,7 +44,11 @@ async def download_project(run_id: str):
 @router.get("/preview/{run_id}")
 async def preview_code(run_id: str):
     files = get_files(run_id)
-    if not files:
+    if files is None:
         raise HTTPException(status_code=404, detail="Files not found")
     # Return html preview or just list for frontend
     return {"files": files}
+
+@router.get("/api/health")
+async def health():
+    return {"status": "ok"}

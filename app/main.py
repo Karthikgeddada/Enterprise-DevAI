@@ -1,21 +1,20 @@
+import os
+
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.requests import Request
+
 from routes.api import router
 
 app = FastAPI(title="DevTeam AI", description="Autonomous AI Software Engineer Platform")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
+# API routes first so they take precedence over the static frontend
 app.include_router(router)
 
-@app.get("/", response_class=HTMLResponse)
-async def get_dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+# Serve the static web UI from webui/ (index.html at /, assets alongside it).
+# Mounted AFTER the router so /generate, /status/... are matched first.
+_WEBUI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "webui")
+app.mount("/", StaticFiles(directory=_WEBUI_DIR, html=True), name="webui")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)))

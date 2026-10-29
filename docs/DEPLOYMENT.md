@@ -1,5 +1,52 @@
 # DevTeam AI - Deployment Guide
 
+## Web App: Render (backend) + Vercel (frontend) + OpenRouter (LLM)
+
+The web version is a FastAPI backend plus a static HTML/CSS/JS frontend in
+`webui/`. The backend serves the frontend itself, so the simplest deployment
+is everything on Render. If you also want the frontend on Vercel, deploy
+both and point the frontend at the Render URL.
+
+### 1. Get an OpenRouter API key
+
+1. Sign up at <https://openrouter.ai> and create a key at <https://openrouter.ai/keys>.
+2. (Optional) Pick a model id from <https://openrouter.ai/models> - free
+   models end in `:free`. The default is `meta-llama/llama-3.3-70b-instruct:free`.
+
+### 2. Deploy the backend on Render
+
+1. Push this repository to GitHub.
+2. On <https://render.com>: **New + -> Blueprint** and select the repo. The
+   `render.yaml` blueprint defines the service (Python, free plan,
+   `pip install -r requirements-web.txt`, `uvicorn app.main:app --host 0.0.0.0 --port $PORT`).
+3. In the **Environment** tab, set `OPENROUTER_API_KEY` to your key.
+   (`LLM_PROVIDER=openrouter` and the default model are already configured.)
+4. Deploy. Your backend is live at `https://<your-service>.onrender.com` and
+   serves the full web UI at `/` - this is all you need for a working app.
+
+### 3. (Optional) Deploy the frontend on Vercel
+
+1. On <https://vercel.com>, import the same GitHub repo. `vercel.json` sets
+   the output directory to `webui/`, so Vercel serves the static frontend.
+2. Edit `webui/config.js` and set `window.API_BASE` to your Render URL, e.g.
+   `https://devteam-ai.onrender.com`, then redeploy (or set it before the
+   first deploy).
+3. On Render, optionally set `ALLOWED_ORIGIN` to your Vercel URL to lock
+   CORS down to just your frontend.
+
+### Local web development
+
+```bash
+pip install -r requirements-web.txt
+cp .env.example .env   # then add your OPENROUTER_API_KEY
+uvicorn app.main:app --reload
+# open http://localhost:8000
+```
+
+---
+
+## Streamlit App (alternative UI)
+
 ## Prerequisites
 
 * Python 3.10 or higher

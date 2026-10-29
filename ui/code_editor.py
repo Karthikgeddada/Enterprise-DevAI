@@ -43,7 +43,7 @@ def render_code_editor(services):
                 value=content,
                 language=lang,
                 theme='monokai',
-                keybindings='vscode',
+                keybinding='vscode',
                 height=500,
                 key=f"ace_{current_file}",
                 auto_update=False,
