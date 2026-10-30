@@ -4,63 +4,126 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DevTeam AI</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230071e3'/%3E%3Cpath d='M10 12l5 4-5 4M17.5 20.5H23' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem("dtai-theme");
+                if (t === "dark" || (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+                    document.documentElement.setAttribute("data-theme", "dark");
+                }
+            } catch (e) { /* no-op */ }
+        })();
+    </script>
 </head>
 <body>
-    <nav class="nav">
-        <a class="nav-brand" href="/">DevTeam&nbsp;AI</a>
-        <span class="nav-caption">Autonomous Software Studio</span>
-    </nav>
+    <div class="app">
+        <aside class="activity-bar">
+            <button class="act-btn active" id="actExplorer" title="Explorer" aria-label="Toggle Explorer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+            </button>
+            <button class="act-btn" id="actAI" title="AI Panel" aria-label="Toggle AI panel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.5l1.8 4.7 4.7 1.8-4.7 1.8L12 16.5l-1.8-4.7L5.5 10l4.7-1.8z"/><path d="M18 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+            </button>
+            <div class="act-spacer"></div>
+            <button class="act-btn" id="themeToggle" title="Toggle light or dark" aria-label="Toggle light or dark appearance">
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></svg>
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/></svg>
+            </button>
+        </aside>
 
-    <header class="hero">
-        <h1>Describe it.<br>Your team builds it.</h1>
-        <p>One prompt becomes a complete project — architecture, code, tests and docs — built by an AI team.</p>
-    </header>
+        <aside class="side-panel" id="sidePanel">
+            <div class="panel-head">EXPLORER</div>
+            <div class="panel-scroll">
+                <div class="section-label" id="runLabel">NO PROJECT OPENED</div>
+                <div class="empty-explorer" id="emptyExplorer">
+                    <p>Generated files will appear here.</p>
+                    <p class="dim">Describe a project in the AI panel to begin.</p>
+                </div>
+                <div class="tree hidden" id="fileTree"></div>
+            </div>
+            <div class="panel-foot">
+                <div class="run-meta hidden" id="runMeta"></div>
+                <a id="downloadBtn" class="btn-ghost hidden" href="#">Download ZIP</a>
+            </div>
+        </aside>
 
-    <main>
-        <section class="card">
-            <textarea id="promptInput" rows="4" placeholder="Describe the project you want. For example: Build a REST API for a todo app with FastAPI, SQLite storage and tests…"></textarea>
-            <div class="prompt-actions">
-                <button id="generateBtn" class="btn-primary">Generate</button>
+        <main class="editor-area">
+            <div class="tabbar">
+                <button class="tab active" id="welcomeTab">Welcome</button>
+                <button class="tab hidden" id="codeTab">file</button>
+            </div>
+
+            <section class="view welcome-view" id="welcomeView">
+                <p class="eyebrow">Autonomous software studio</p>
+                <h1>Describe it.<br>Your team builds it.</h1>
+                <p class="lede">One prompt becomes a complete project — architecture, code, tests and docs — built end to end by an AI team, then delivered as a ZIP.</p>
+
+                <div class="start">
+                    <h2>Start</h2>
+                    <div class="chips">
+                        <button class="chip" data-prompt="Build a REST API for a todo app with FastAPI, SQLite storage and tests">Todo API · FastAPI</button>
+                        <button class="chip" data-prompt="Build a clean personal portfolio site with HTML, CSS and JavaScript">Portfolio site</button>
+                        <button class="chip" data-prompt="Build a URL shortener service with Flask, an in-memory store and unit tests">URL shortener</button>
+                    </div>
+                    <p class="dim">Describe your project in the AI panel, then press Build.</p>
+                </div>
+
+                <div class="walkthroughs">
+                    <h2>Walkthroughs</h2>
+                    <div class="wt-card">
+                        <h3><span class="wt-ic">✦</span>Meet your AI team</h3>
+                        <p>Requirements → Architecture → Code → Review → Tests → Docs. Six specialists take your idea from a single sentence to a finished project.</p>
+                    </div>
+                    <div class="wt-card">
+                        <h3><span class="wt-ic">⌘</span>Held to a higher standard</h3>
+                        <p>Every build is reviewed, debugged and tested before it reaches you. Watch each stage live in the AI panel.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="view code-view hidden" id="codeView">
+                <pre class="code-wrap"><code id="codeViewer">Select a file to preview</code></pre>
+            </section>
+        </main>
+
+        <aside class="ai-panel" id="aiPanel">
+            <div class="panel-head ai-head">
+                <span>AI BUILDER</span>
+                <span class="model-badge">GEMINI</span>
+            </div>
+            <div class="ai-scroll">
+                <ul class="steps" id="stepsList">
+                    <li data-step="requirements"><span class="dot"></span><span>Requirements</span></li>
+                    <li data-step="architecture"><span class="dot"></span><span>Architecture</span></li>
+                    <li data-step="coding"><span class="dot"></span><span>Code</span></li>
+                    <li data-step="review"><span class="dot"></span><span>Review</span></li>
+                    <li data-step="testing"><span class="dot"></span><span>Tests</span></li>
+                    <li data-step="docs"><span class="dot"></span><span>Docs</span></li>
+                </ul>
+                <div class="term-wrap">
+                    <div class="section-label">ACTIVITY</div>
+                    <div id="logsTerminal" class="terminal">Your team is ready.
+Describe a project to begin.</div>
+                </div>
+            </div>
+            <div class="ai-input">
                 <span id="errorMsg" class="error-msg hidden"></span>
+                <textarea id="promptInput" rows="3" placeholder="Describe the project you want to build…"></textarea>
+                <div class="input-row">
+                    <span class="hint">⌘⏎ to build</span>
+                    <button id="generateBtn" class="btn-primary">Build</button>
+                </div>
             </div>
-        </section>
+        </aside>
+    </div>
 
-        <section class="card hidden" id="statusCard">
-            <div class="progress-head">
-                <h2>Progress</h2>
-                <span id="progressText">0%</span>
-            </div>
-            <div class="progress-bar"><div id="progressBarFill"></div></div>
-            <ol class="steps" id="stepsList">
-                <li data-step="requirements">Requirements</li>
-                <li data-step="architecture">Architecture</li>
-                <li data-step="coding">Code</li>
-                <li data-step="review">Review</li>
-                <li data-step="testing">Tests</li>
-                <li data-step="docs">Docs</li>
-            </ol>
-        </section>
-
-        <section class="card hidden" id="logsCard">
-            <h2>Activity</h2>
-            <div id="logsTerminal" class="terminal">Waiting…</div>
-        </section>
-
-        <section class="card hidden" id="resultsSection">
-            <div class="results-head">
-                <h2>Generated Files</h2>
-                <a id="downloadBtn" class="btn-secondary" href="#">Download ZIP</a>
-            </div>
-            <div class="explorer">
-                <ul id="fileList" class="file-list"></ul>
-                <pre class="code-preview"><code id="codeViewer">Select a file to preview</code></pre>
-            </div>
-        </section>
-    </main>
-
-    <footer>DevTeam AI &middot; powered by <a href="https://ai.google.dev" target="_blank" rel="noopener">Google Gemini</a></footer>
+    <footer class="statusbar">
+        <span id="statusLeft">✦ DevTeam AI</span>
+        <span class="sb-right"><span id="statusRight">Ready</span></span>
+    </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script src="config.js"></script>
