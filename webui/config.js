@@ -4,5 +4,5 @@
 //   (e.g. the FastAPI app deployed on Render, or local dev).
 //
 // - Frontend on Vercel + backend on Render: set it to the Render URL.
-window.API_BASE = "https://enterprise-devai.onrender.com";
+window.API_BASE = "https://enterprise-devai-les9.onrender.com";
 
