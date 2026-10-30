@@ -1,10 +1,11 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 from services.generation_service import start_generation, get_status, get_files
+from services.guard import rate_limit, require_api_key
 
 router = APIRouter()
 
@@ -12,7 +13,7 @@ class PromptRequest(BaseModel):
     prompt: str
     base_run_id: Optional[str] = None  # set to continue developing an existing project
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 async def generate_project(req: PromptRequest):
     try:
         run_id = await start_generation(req.prompt, req.base_run_id)
@@ -37,7 +38,7 @@ async def get_project_files(run_id: str):
         raise HTTPException(status_code=404, detail="Files not found")
     return {"files": files}
 
-@router.get("/download/{run_id}")
+@router.get("/download/{run_id}", dependencies=[Depends(require_api_key)])
 async def download_project(run_id: str):
     zip_path = f"generated_projects/{run_id}.zip"
     if not os.path.exists(zip_path):

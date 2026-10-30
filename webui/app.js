@@ -178,9 +178,11 @@ $("generateBtn").addEventListener("click", async () => {
     try {
         const body = { prompt };
         if (isContinue) body.base_run_id = lastCompletedRunId;
+        const headers = { "Content-Type": "application/json" };
+        if (window.API_KEY) headers["X-API-Key"] = window.API_KEY;
         const res = await fetch(`${API}/generate`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(body)
         });
         if (!res.ok) {
@@ -284,7 +286,8 @@ async function fetchFiles() {
             ? `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines · ${changedCount} changed`
             : `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
         $("runMeta").classList.remove("hidden");
-        $("downloadBtn").href = `${API}/download/${currentRunId}`;
+        $("downloadBtn").href = `${API}/download/${currentRunId}` +
+            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
         $("downloadBtn").classList.remove("hidden");
         $("runLabel").textContent = "GENERATED PROJECT";
         $("emptyExplorer").classList.add("hidden");
