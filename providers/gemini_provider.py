@@ -10,6 +10,12 @@ class GeminiProvider(BaseProvider):
 
     DEFAULT_MODELS = [
         ModelInfo(
+            id="gemini-flash-lite-latest", name="Gemini Flash Lite (latest, cheapest)",
+            provider="gemini", context_window=1048576,
+            supports_streaming=True, supports_structured=True, max_output_tokens=8192,
+            pricing_per_1m_input=0.075, pricing_per_1m_output=0.30,
+        ),
+        ModelInfo(
             id="gemini-2.0-flash",
             name="Gemini 2.0 Flash",
             provider="gemini",
@@ -54,7 +60,7 @@ class GeminiProvider(BaseProvider):
 
     def __init__(self, api_key: Optional[str] = None, default_model: Optional[str] = None):
         self._api_key = api_key or self._get_api_key()
-        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 
     def _get_api_key(self) -> Optional[str]:
         # Try Streamlit secrets first

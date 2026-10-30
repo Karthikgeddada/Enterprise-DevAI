@@ -22,6 +22,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama-3.3-70b-versatile" if LLM_PROVIDER == "groq" else "llama3:8b")
 
 # -----------------------------
@@ -85,6 +86,22 @@ async def generate_response(prompt_or_messages) -> str:
             return response.choices[0].message.content
         except Exception as e:
             raise Exception(f"Local LLM failed. Ensure Ollama is running at {OLLAMA_BASE_URL}. Original error: {str(e)}")
+
+    # Gemini (Google - hosted, cheap flash-lite models)
+    if LLM_PROVIDER == "gemini":
+        try:
+            from providers.gemini_provider import GeminiProvider
+            from providers.base import GenerationRequest
+            provider = GeminiProvider()
+            response = await provider.generate(GenerationRequest(
+                messages=messages,
+                model=GEMINI_MODEL,
+                temperature=0.2,
+                max_tokens=4096,
+            ))
+            return response.content
+        except Exception as e:
+            raise Exception(f"Gemini API error: {str(e)}")
 
     # OpenRouter (default): one key, many models
     if LLM_PROVIDER == "openrouter":
