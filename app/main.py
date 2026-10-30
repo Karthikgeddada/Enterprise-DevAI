@@ -13,7 +13,7 @@ app = FastAPI(title="DevTeam AI", description="Autonomous AI Software Engineer P
 # ALLOWED_ORIGIN env: "*" (default) allows all origins; a comma-separated
 # list (e.g. "https://your-app.vercel.app") locks it down.
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "*")
-_origins = [o.strip() for o in _allowed_origin.split(",") if o.strip()] or ["*"]
+_origins = [o.strip().rstrip("/") for o in _allowed_origin.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
