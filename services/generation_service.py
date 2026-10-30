@@ -21,9 +21,44 @@ from agents.debugger_agent import debugger_agent
 from agents.tester_agent import tester_agent
 from agents.documentation_agent import documentation_agent
 from agents.packager_agent import packager_agent
+from services import run_store
 
-# In-memory run store (fine for a single-process deployment)
+# In-memory run store: the live working copy the pipeline mutates on every
+# step. Every change is mirrored to SQLite (services.run_store) so runs
+# survive worker restarts - see _load/_persist below.
 _runs: Dict[str, Dict[str, Any]] = {}
+
+_TERMINAL = ("completed", "failed")
+
+
+def _persist(run_id: str) -> None:
+    """Mirror the live run dict to SQLite. Never raises, never blocks long."""
+    run = _runs.get(run_id)
+    if run is not None:
+        run_store.save(run_id, run["status"], run["logs"], run.get("files", []))
+
+
+def _load(run_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch a run from memory, or rehydrate it from SQLite after a restart.
+
+    A run found on disk in a non-terminal state belonged to a pipeline that
+    died with the old process, so it is marked failed - a client should
+    never poll a phantom "generating_code" forever.
+    """
+    run = _runs.get(run_id)
+    if run is not None:
+        return run
+    data = run_store.load(run_id)
+    if data is None:
+        return None
+    status = data["status"]
+    logs = list(data["logs"])
+    if status not in _TERMINAL:
+        status = "failed"
+        logs.append("Server restarted mid-run; this run can no longer finish. Please generate again.")
+    run = {"status": status, "logs": logs, "files": data.get("files", [])}
+    _runs[run_id] = run
+    return run
 
 
 def _sanitize_path(path: Any) -> Optional[str]:
@@ -84,6 +119,7 @@ async def _run_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict
 
     def log(msg: Any) -> None:
         run["logs"].append(str(msg))
+        _persist(run_id)  # every log line is a state checkpoint
 
     engine = os.getenv("PIPELINE_ENGINE", "custom").strip().lower()
     if engine == "langgraph":
@@ -115,6 +151,7 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
 
     def log(msg: Any) -> None:
         run["logs"].append(str(msg))
+        _persist(run_id)  # every log line is a state checkpoint
 
     try:
         run["status"] = "analyzing_requirements"
@@ -204,7 +241,7 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> st
 
     base_files: Optional[List[Dict[str, str]]] = None
     if base_run_id:
-        base = _runs.get(base_run_id)
+        base = _load(base_run_id)
         if not base:
             raise ValueError("Previous run not found. The server may have restarted.")
         if base.get("status") != "completed":
@@ -215,12 +252,13 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> st
 
     run_id = uuid.uuid4().hex[:12]
     _runs[run_id] = {"status": "starting", "logs": ["Run started."], "files": []}
+    _persist(run_id)
     asyncio.create_task(_run_pipeline(run_id, prompt.strip(), base_files))
     return run_id
 
 
 def get_status(run_id: str) -> Optional[Dict[str, Any]]:
-    run = _runs.get(run_id)
+    run = _load(run_id)
     if not run:
         return None
     return {"status": run["status"], "logs": list(run["logs"])}
@@ -228,7 +266,7 @@ def get_status(run_id: str) -> Optional[Dict[str, Any]]:
 
 def get_files(run_id: str) -> Optional[List[Dict[str, str]]]:
     """Return generated files (only meaningful once status is completed)."""
-    run = _runs.get(run_id)
+    run = _load(run_id)
     if not run:
         return None
     return list(run.get("files", []))
