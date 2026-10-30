@@ -5,6 +5,7 @@ const API = (window.API_BASE || "").replace(/\/$/, "");
 let currentRunId = null;
 let lastCompletedRunId = null;
 let continueMode = false;
+let pendingIsContinue = false;
 let pollInterval = null;
 let allGeneratedFiles = [];
 let activeIndex = -1;
@@ -117,19 +118,23 @@ function resetUI(isContinue) {
         ? "Applying your change…"
         : "Your team is assembling…";
     $("runLabel").textContent = isContinue ? "UPDATING PROJECT" : "BUILDING PROJECT";
+    $("promptInput").placeholder = "Describe the project you want to build…";
+    $("newProjectBtn").classList.add("hidden");
+    continueMode = false;
+    const btn = $("generateBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Building…';
+    setStatus("Starting…");
+    if (isContinue) {
+        // Keep the current codebase visible while the update runs.
+        return;
+    }
     $("fileTree").innerHTML = "";
     $("fileTree").classList.add("hidden");
     $("emptyExplorer").classList.remove("hidden");
     $("runMeta").classList.add("hidden");
     $("downloadBtn").classList.add("hidden");
-    $("promptInput").placeholder = "Describe the project you want to build…";
-    $("newProjectBtn").classList.add("hidden");
-    continueMode = false;
     showWelcome();
-    const btn = $("generateBtn");
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>Building…';
-    setStatus("Starting…");
 }
 function restoreButton(label) {
     const btn = $("generateBtn");
@@ -147,6 +152,7 @@ $("generateBtn").addEventListener("click", async () => {
     }
 
     const isContinue = continueMode && lastCompletedRunId;
+    pendingIsContinue = isContinue;
     resetUI(isContinue);
 
     try {
@@ -234,22 +240,39 @@ async function fetchFiles() {
         if (!res.ok) return;
         const data = await res.json();
 
+        const previousFiles = allGeneratedFiles;
         allGeneratedFiles = data.files || [];
         if (!allGeneratedFiles.length) return;
+
+        // In continue mode, diff the new files against the previous ones so
+        // the explorer can badge what was added or changed.
+        const changeMap = new Map();
+        if (pendingIsContinue) {
+            const prevMap = new Map(previousFiles.map((f) => [f.path, f.content]));
+            allGeneratedFiles.forEach((f) => {
+                if (!prevMap.has(f.path)) changeMap.set(f.path, "new");
+                else if (prevMap.get(f.path) !== f.content) changeMap.set(f.path, "mod");
+            });
+        }
+        pendingIsContinue = false;
 
         const lineCount = allGeneratedFiles.reduce(
             (n, f) => n + String(f.content || "").split("\n").length, 0
         );
-        $("runMeta").textContent = `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
+        const changedCount = changeMap.size;
+        $("runMeta").textContent = changedCount
+            ? `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines · ${changedCount} changed`
+            : `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
         $("runMeta").classList.remove("hidden");
         $("downloadBtn").href = `${API}/download/${currentRunId}`;
         $("downloadBtn").classList.remove("hidden");
         $("runLabel").textContent = "GENERATED PROJECT";
         $("emptyExplorer").classList.add("hidden");
 
-        renderTree();
-        previewCode(0);
-        setStatus(`Complete · ${allGeneratedFiles.length} files`);
+        renderTree(changeMap);
+        const firstChanged = allGeneratedFiles.findIndex((f) => changeMap.has(f.path));
+        previewCode(firstChanged >= 0 ? firstChanged : 0);
+        setStatus(`Complete · ${allGeneratedFiles.length} files${changedCount ? ` · ${changedCount} changed` : ""}`);
 
         // Enter continue mode: the next prompt iterates on this project.
         lastCompletedRunId = currentRunId;
@@ -279,14 +302,14 @@ function buildTree(files) {
     return root;
 }
 
-function renderTree() {
+function renderTree(changeMap) {
     const el = $("fileTree");
     el.innerHTML = "";
-    el.appendChild(buildBranch(buildTree(allGeneratedFiles)));
+    el.appendChild(buildBranch(buildTree(allGeneratedFiles), changeMap || new Map()));
     el.classList.remove("hidden");
 }
 
-function buildBranch(node) {
+function buildBranch(node, changeMap) {
     const ul = document.createElement("ul");
 
     Object.keys(node.dirs).sort().forEach((d) => {
@@ -305,7 +328,7 @@ function buildBranch(node) {
         row.addEventListener("click", () => li.classList.toggle("open"));
 
         li.appendChild(row);
-        li.appendChild(buildBranch(node.dirs[d]));
+        li.appendChild(buildBranch(node.dirs[d], changeMap));
         ul.appendChild(li);
     });
 
@@ -321,6 +344,14 @@ function buildBranch(node) {
             label.textContent = f.name;
             li.appendChild(spacer);
             li.appendChild(label);
+            const tag = changeMap.get(f.path);
+            if (tag) {
+                li.classList.add(tag === "new" ? "is-new" : "is-mod");
+                const badge = document.createElement("span");
+                badge.className = "tree-badge";
+                badge.textContent = tag === "new" ? "N" : "M";
+                li.appendChild(badge);
+            }
             li.addEventListener("click", () => previewCode(f.idx));
             ul.appendChild(li);
         });

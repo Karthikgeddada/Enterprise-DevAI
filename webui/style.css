@@ -113,6 +113,14 @@ html[data-theme="dark"] .icon-moon { display: none; }
 }
 .tree-row:hover { background: rgba(125, 125, 125, 0.14); }
 .tree-file.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tree-badge {
+    margin-left: auto; flex: none;
+    font-size: 9px; font-weight: 700;
+    padding: 1px 6px; border-radius: 980px;
+}
+.tree-file.is-mod .tree-badge { background: var(--accent-soft); color: var(--accent); }
+.tree-file.is-new .tree-badge { background: rgba(52, 199, 89, 0.16); color: #248a3d; }
+html[data-theme="dark"] .tree-file.is-new .tree-badge { color: #30d158; }
 .chev {
     width: 11px; flex: none;
     font-size: 9px; line-height: 1; color: var(--muted);
