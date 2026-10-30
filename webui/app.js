@@ -3,6 +3,8 @@
 const API = (window.API_BASE || "").replace(/\/$/, "");
 
 let currentRunId = null;
+let lastCompletedRunId = null;
+let continueMode = false;
 let pollInterval = null;
 let allGeneratedFiles = [];
 let activeIndex = -1;
@@ -93,17 +95,36 @@ $("promptInput").addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("generateBtn").click();
 });
 
+/* Start a fresh project (exits continue mode) */
+$("newProjectBtn").addEventListener("click", () => {
+    currentRunId = null;
+    lastCompletedRunId = null;
+    continueMode = false;
+    clearError();
+    $("promptInput").value = "";
+    $("promptInput").placeholder = "Describe the project you want to build…";
+    $("newProjectBtn").classList.add("hidden");
+    restoreButton("Build");
+    setStatus("Ready");
+    showWelcome();
+});
+
 /* ---------- Run lifecycle ---------- */
-function resetUI() {
+function resetUI(isContinue) {
     clearError();
     document.querySelectorAll("#stepsList li").forEach((li) => (li.className = ""));
-    $("logsTerminal").textContent = "Your team is assembling…";
+    $("logsTerminal").textContent = isContinue
+        ? "Applying your change…"
+        : "Your team is assembling…";
+    $("runLabel").textContent = isContinue ? "UPDATING PROJECT" : "BUILDING PROJECT";
     $("fileTree").innerHTML = "";
     $("fileTree").classList.add("hidden");
     $("emptyExplorer").classList.remove("hidden");
-    $("runLabel").textContent = "BUILDING PROJECT";
     $("runMeta").classList.add("hidden");
     $("downloadBtn").classList.add("hidden");
+    $("promptInput").placeholder = "Describe the project you want to build…";
+    $("newProjectBtn").classList.add("hidden");
+    continueMode = false;
     showWelcome();
     const btn = $("generateBtn");
     btn.disabled = true;
@@ -119,17 +140,22 @@ function restoreButton(label) {
 $("generateBtn").addEventListener("click", async () => {
     const prompt = $("promptInput").value.trim();
     if (!prompt) {
-        showError("Describe the project you want to build first.");
+        showError(continueMode
+            ? "Describe the change you want to make first."
+            : "Describe the project you want to build first.");
         return;
     }
 
-    resetUI();
+    const isContinue = continueMode && lastCompletedRunId;
+    resetUI(isContinue);
 
     try {
+        const body = { prompt };
+        if (isContinue) body.base_run_id = lastCompletedRunId;
         const res = await fetch(`${API}/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt })
+            body: JSON.stringify(body)
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -158,7 +184,6 @@ async function pollStatus() {
         if (data.status === "completed" || data.status === "failed") {
             clearInterval(pollInterval);
             if (data.status === "completed") {
-                restoreButton("Build again");
                 fetchFiles();
             } else {
                 restoreButton();
@@ -225,6 +250,13 @@ async function fetchFiles() {
         renderTree();
         previewCode(0);
         setStatus(`Complete · ${allGeneratedFiles.length} files`);
+
+        // Enter continue mode: the next prompt iterates on this project.
+        lastCompletedRunId = currentRunId;
+        continueMode = true;
+        $("promptInput").placeholder = "Describe the change to make to this project…";
+        restoreButton("Continue building");
+        $("newProjectBtn").classList.remove("hidden");
     } catch (e) {
         console.error(e);
     }

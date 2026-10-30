@@ -52,7 +52,26 @@ def _sanitize_files(files: Any) -> List[Dict[str, str]]:
     return safe
 
 
-async def _run_pipeline(run_id: str, prompt: str) -> None:
+def _project_context(base_files: List[Dict[str, str]], per_file: int = 6000, max_chars: int = 60000) -> str:
+    """Render the current project files as context for the coder agent."""
+    parts: List[str] = []
+    for f in base_files:
+        content = f["content"]
+        if len(content) > per_file:
+            content = content[:per_file] + "\n... (truncated)"
+        parts.append(f"--- {f['path']} ---\n{content}")
+    return "\n\n".join(parts)[:max_chars]
+
+
+def _merge_files(base_files: List[Dict[str, str]], changes: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Overlay the coder's changed files onto the base project (by path)."""
+    merged = {f["path"]: f["content"] for f in base_files}
+    for f in changes:
+        merged[f["path"]] = f["content"]
+    return [{"path": p, "content": c} for p, c in merged.items()]
+
+
+async def _run_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict[str, str]]] = None) -> None:
     run = _runs[run_id]
 
     def log(msg: Any) -> None:
@@ -70,18 +89,33 @@ async def _run_pipeline(run_id: str, prompt: str) -> None:
         log("Architecture designed.")
 
         run["status"] = "generating_code"
-        log("Generating code files...")
-        code_files = _sanitize_files(
-            await coder_agent(
-                user_request=prompt,
-                task_title="Generate the full project",
-                task_description=architecture,
-                context="",
+        if base_files:
+            log(f"Continuing development on the existing project ({len(base_files)} files)...")
+            code_files = _sanitize_files(
+                await coder_agent(
+                    user_request=prompt,
+                    task_title="Apply the requested change to the existing project",
+                    task_description=architecture,
+                    context=_project_context(base_files),
+                )
             )
-        )
-        if not code_files:
-            raise RuntimeError("Code generation returned no usable files.")
-        log(f"Generated {len(code_files)} code files.")
+            if not code_files:
+                raise RuntimeError("Code generation returned no usable files.")
+            code_files = _merge_files(base_files, code_files)
+            log(f"Project updated — now {len(code_files)} files.")
+        else:
+            log("Generating code files...")
+            code_files = _sanitize_files(
+                await coder_agent(
+                    user_request=prompt,
+                    task_title="Generate the full project",
+                    task_description=architecture,
+                    context="",
+                )
+            )
+            if not code_files:
+                raise RuntimeError("Code generation returned no usable files.")
+            log(f"Generated {len(code_files)} code files.")
 
         run["status"] = "reviewing"
         log("Reviewing code...")
@@ -119,13 +153,30 @@ async def _run_pipeline(run_id: str, prompt: str) -> None:
         log(f"FAILED: {e}")
 
 
-async def start_generation(prompt: str) -> str:
-    """Start a generation run in the background. Returns the run id."""
+async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> str:
+    """Start a generation run in the background. Returns the run id.
+
+    With base_run_id, the run continues development on that completed run's
+    project: the coder receives the current files as context and its changes
+    are merged on top of them.
+    """
     if not prompt or not prompt.strip():
         raise ValueError("Prompt is required.")
+
+    base_files: Optional[List[Dict[str, str]]] = None
+    if base_run_id:
+        base = _runs.get(base_run_id)
+        if not base:
+            raise ValueError("Previous run not found. The server may have restarted.")
+        if base.get("status") != "completed":
+            raise ValueError("Previous run is not completed yet.")
+        base_files = [dict(f) for f in base.get("files", [])]
+        if not base_files:
+            raise ValueError("Previous run has no files to continue from.")
+
     run_id = uuid.uuid4().hex[:12]
     _runs[run_id] = {"status": "starting", "logs": ["Run started."], "files": []}
-    asyncio.create_task(_run_pipeline(run_id, prompt.strip()))
+    asyncio.create_task(_run_pipeline(run_id, prompt.strip(), base_files))
     return run_id
 
 

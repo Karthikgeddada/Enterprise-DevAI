@@ -255,6 +255,15 @@ textarea {
 textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .input-row { display: flex; align-items: center; justify-content: space-between; }
 .hint { font-size: 11px; color: var(--faint); }
+.input-actions { display: flex; align-items: center; gap: 12px; }
+.link-btn {
+    border: none; background: none;
+    color: var(--muted); font: inherit; font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+    transition: color 0.18s;
+}
+.link-btn:hover { color: var(--text); }
 .btn-primary {
     border: none; border-radius: 980px;
     background: var(--accent); color: #fff;

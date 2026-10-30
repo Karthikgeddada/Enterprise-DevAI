@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -8,11 +10,12 @@ router = APIRouter()
 
 class PromptRequest(BaseModel):
     prompt: str
+    base_run_id: Optional[str] = None  # set to continue developing an existing project
 
 @router.post("/generate")
 async def generate_project(req: PromptRequest):
     try:
-        run_id = await start_generation(req.prompt)
+        run_id = await start_generation(req.prompt, req.base_run_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"run_id": run_id, "message": "Generation started"}
