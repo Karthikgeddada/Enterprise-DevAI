@@ -12,6 +12,22 @@ let activeIndex = -1;
 
 const $ = (id) => document.getElementById(id);
 
+/* Mobile: overlay panels get a scrim; tapping it closes them */
+const isNarrow = () => window.innerWidth <= 980;
+function syncScrim() {
+    const anyOpen = isNarrow() &&
+        (!$("sidePanel").classList.contains("collapsed") ||
+         !$("aiPanel").classList.contains("collapsed"));
+    $("scrim").classList.toggle("show", anyOpen);
+}
+function closeOverlays() {
+    $("sidePanel").classList.add("collapsed");
+    $("aiPanel").classList.add("collapsed");
+    $("actExplorer").classList.remove("active");
+    $("actAI").classList.remove("active");
+    syncScrim();
+}
+
 // Map backend pipeline status -> (step key, progress %)
 const STATUS_MAP = {
     starting:                { step: null,           pct: 2 },
@@ -41,6 +57,7 @@ function bindPanelToggle(btnId, panelId) {
     $(btnId).addEventListener("click", () => {
         const collapsed = $(panelId).classList.toggle("collapsed");
         $(btnId).classList.toggle("active", !collapsed);
+        syncScrim();
     });
 }
 bindPanelToggle("actExplorer", "sidePanel");
@@ -51,6 +68,8 @@ if (window.innerWidth <= 980) {
     $("actExplorer").classList.remove("active");
     $("actAI").classList.remove("active");
 }
+$("scrim").addEventListener("click", closeOverlays);
+window.addEventListener("resize", syncScrim);
 
 /* ---------- Tabs ---------- */
 function showWelcome() {
@@ -89,6 +108,7 @@ document.querySelectorAll(".chip").forEach((chip) => {
         $("promptInput").value = chip.dataset.prompt || "";
         $("aiPanel").classList.remove("collapsed");
         $("actAI").classList.add("active");
+        syncScrim();
         $("promptInput").focus();
     });
 });
@@ -377,6 +397,9 @@ function previewCode(index) {
     $("codeTab").textContent = file.path.split("/").pop();
     $("codeTab").classList.remove("hidden");
     showCode();
+
+    // On phones the explorer is an overlay: close it so the code is visible.
+    if (isNarrow() && !$("sidePanel").classList.contains("collapsed")) closeOverlays();
 
     const ext = (file.path.split(".").pop() || "").toLowerCase();
     const viewer = $("codeViewer");

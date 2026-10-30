@@ -46,7 +46,17 @@ body {
 }
 .hidden { display: none !important; }
 
-.app { display: flex; height: calc(100vh - 24px); position: relative; }
+/* Overlay scrim behind mobile panels (tapping it closes them) */
+.scrim {
+    position: absolute; inset: 0; z-index: 50;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s;
+}
+.scrim.show { opacity: 1; pointer-events: auto; }
+@media (min-width: 981px) { .scrim { display: none; } }
+
+.app { display: flex; height: calc(100vh - 24px); height: calc(100dvh - 24px); position: relative; }
 
 /* ---- Activity bar ---- */
 .activity-bar {
@@ -315,11 +325,52 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
         position: absolute; top: 0; bottom: 0; z-index: 60;
         box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
     }
-    .side-panel { left: 48px; }
-    .ai-panel { right: 0; }
+    .side-panel { left: 48px; width: min(280px, 78vw); }
+    .ai-panel { right: 0; width: min(344px, 88vw); }
     .side-panel.collapsed, .ai-panel.collapsed { display: none; }
     .welcome-view { padding: 44px 26px 40px; }
 }
+
+/* ---- Phones: full-screen panels, touch-sized controls ---- */
 @media (max-width: 560px) {
-    .ai-panel { width: min(344px, 92vw); }
+    /* 16px stops iOS Safari auto-zooming into the prompt on focus */
+    textarea { font-size: 16px; }
+
+    /* full-screen overlays on phones */
+    .ai-panel { width: 100vw; }
+    .side-panel { left: 0; width: 100vw; }
+    .tree-row { padding: 8px 12px; }
+
+    /* welcome view sized for small screens */
+    .welcome-view { padding: 30px 20px 34px; }
+    .welcome-view h1 { font-size: clamp(28px, 9vw, 38px); }
+    .lede { font-size: 15px; margin-top: 12px; }
+    .start { margin-top: 34px; }
+    .walkthroughs { margin-top: 34px; }
+    .wt-card { padding: 16px 18px; }
+    .chip { padding: 8px 15px; font-size: 12.5px; }
+
+    /* editor + code */
+    .tab { padding: 0 14px; font-size: 12px; }
+    .code-wrap { padding: 14px; }
+    #codeViewer { font-size: 11.5px; line-height: 1.6; }
+
+    /* AI panel */
+    .steps li { font-size: 12.5px; padding: 8px 8px; }
+    .terminal { font-size: 11px; max-height: 170px; }
+    .ai-input { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+    .hint { display: none; }  /* keyboard shortcut is irrelevant on touch */
+    .btn-primary { padding: 11px 26px; }
+
+    /* explorer footer + status bar */
+    .panel-foot { padding: 12px 12px calc(14px + env(safe-area-inset-bottom)); }
+    .panel-foot .btn-ghost { display: block; text-align: center; padding: 10px 16px; }
+    .statusbar { padding: 0 10px; font-size: 11px; }
+}
+
+/* ---- Landscape phones: keep the editor visible ---- */
+@media (max-height: 480px) and (orientation: landscape) {
+    .welcome-view { padding: 22px 30px 26px; }
+    .start, .walkthroughs { margin-top: 22px; }
+    .terminal { max-height: 110px; }
 }
