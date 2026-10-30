@@ -1,6 +1,6 @@
 # Render deployment for the DevTeam AI FastAPI backend.
 # Docs: https://render.com/docs/blueprint-spec
-# After the first deploy, set OPENROUTER_API_KEY in the Render dashboard
+# After the first deploy, set GEMINI_API_KEY in the Render dashboard
 # (Environment tab) - it is marked sync:false so it is NOT committed here.
 services:
   - type: web
@@ -13,11 +13,14 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.10"
       - key: LLM_PROVIDER
-        value: openrouter
-      - key: OPENROUTER_MODEL
-        value: meta-llama/llama-3.3-70b-instruct:free
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
       # Optional: lock CORS to your Vercel frontend URL (default allows all)
       # - key: ALLOWED_ORIGIN
       #   value: https://your-app.vercel.app
-      - key: OPENROUTER_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
+      # Optional: OpenRouter as alternative provider (set LLM_PROVIDER=openrouter)
+      # - key: OPENROUTER_API_KEY
+      #   sync: false
