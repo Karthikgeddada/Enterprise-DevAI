@@ -9,6 +9,7 @@ Statuses emitted (must match webui/app.js):
     reviewing, debugging, testing, documenting, completed, failed
 """
 import asyncio
+import os
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -72,6 +73,44 @@ def _merge_files(base_files: List[Dict[str, str]], changes: List[Dict[str, str]]
 
 
 async def _run_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict[str, str]]] = None) -> None:
+    """Dispatch to the selected pipeline engine.
+
+    PIPELINE_ENGINE env: "custom" (default - the proven asyncio pipeline) or
+    "langgraph" (StateGraph orchestration in services.langgraph_pipeline). If
+    the langgraph module isn't importable we log it and fall back to custom,
+    so a missing dependency can never take the app down.
+    """
+    run = _runs[run_id]
+
+    def log(msg: Any) -> None:
+        run["logs"].append(str(msg))
+
+    engine = os.getenv("PIPELINE_ENGINE", "custom").strip().lower()
+    if engine == "langgraph":
+        try:
+            from services import langgraph_pipeline as _lg
+        except ImportError as e:
+            log(f"LangGraph engine unavailable ({e}); falling back to the custom pipeline.")
+        else:
+            try:
+                final = await _lg.execute(
+                    run_id,
+                    prompt,
+                    base_files,
+                    set_status=lambda status: run.__setitem__("status", status),
+                    log=log,
+                )
+                run["files"] = final.get("final_files", [])
+                run["status"] = "completed"
+                log("Done. Project packaged as ZIP.")
+            except Exception as e:  # same failure contract as the custom engine
+                run["status"] = "failed"
+                log(f"FAILED: {e}")
+            return
+    await _run_custom_pipeline(run_id, prompt, base_files)
+
+
+async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict[str, str]]] = None) -> None:
     run = _runs[run_id]
 
     def log(msg: Any) -> None:

@@ -6,3 +6,8 @@ pydantic>=2.6.0
 python-dotenv>=1.0.0
 openai>=1.0.0
 google-genai>=0.3.0
+
+# LangGraph StateGraph engine (services/langgraph_pipeline.py).
+# Only needed when PIPELINE_ENGINE=langgraph; the default custom engine has
+# no extra dependencies.
+langgraph>=0.2.0
