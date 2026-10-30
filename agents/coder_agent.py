@@ -49,6 +49,7 @@ Rules:
 - Include the FULL content of each file, not just the changed parts.
 - Only include files that need to be created or modified for THIS task.
 - Do NOT include files that are not part of this task.
+- Keep the output focused: prefer 3-6 files for this task.
 - Ensure all code is syntactically valid.
 - Include proper imports and dependencies."""
 
@@ -60,10 +61,18 @@ Task Description: {task_description}
 Current Project Context:
 {context}"""
 
+    # The coder must emit full file contents inside one JSON payload.
+    # The default max_tokens=4096 truncates it mid-file, which then parses
+    # to zero files ("Coder returned no files"). Use the model's cap.
+    model_cap = next(
+        (m.max_output_tokens for m in provider.get_models() if m.id == selected_model),
+        8192,
+    )
     request = GenerationRequest(
         messages=[{"role": "user", "content": user_msg}],
         model=selected_model,
         system_prompt=system_prompt,
+        max_tokens=model_cap,
         response_format={"type": "json_object"} if provider.get_models() and provider.get_models()[0].supports_structured else None,
     )
 
@@ -95,7 +104,12 @@ Current Project Context:
     files = data.get("files", [])
 
     if not files:
-        raise ProviderError("Coder returned no files", ErrorCategory.MALFORMED_RESPONSE, retryable=False)
+        finish = getattr(response, "finish_reason", None)
+        raise ProviderError(
+            f"Coder returned no files (finish_reason={finish})",
+            ErrorCategory.MALFORMED_RESPONSE,
+            retryable=False,
+        )
 
     # Validate file paths are relative (not absolute)
     for f in files:
