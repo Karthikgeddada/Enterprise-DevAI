@@ -2,6 +2,10 @@
 
 DevTeam AI is a production-grade, incremental AI coding workspace built on Streamlit. Describe changes in natural language, review proposed diffs, and accept or reject changes safely. All state is persisted to SQLite, enabling session resumption and crash recovery.
 
+## Live Demo
+
+Try the deployed app here: **https://enterprise-dev-ai.vercel.app**
+
 ## Features
 
 * **Multi-Provider LLM Support** - Gemini, DeepSeek, Qwen, and Ollama with automatic fallback and retry
