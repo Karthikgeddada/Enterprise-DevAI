@@ -14,7 +14,7 @@ from services import guard
 
 @pytest.fixture()
 def client(monkeypatch):
-    async def fake_start(prompt, base_run_id=None):
+    async def fake_start(prompt, base_run_id=None, provider=None):
         return "run123"
 
     monkeypatch.setattr(api, "start_generation", fake_start)

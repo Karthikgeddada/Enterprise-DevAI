@@ -266,15 +266,29 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
         log(f"FAILED: {e}")
 
 
-async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> str:
+async def start_generation(prompt: str, base_run_id: Optional[str] = None,
+                           provider: Optional[str] = None) -> str:
     """Start a generation run in the background. Returns the run id.
 
     With base_run_id, the run continues development on that completed run's
     project: the coder receives the current files as context and its changes
     are merged on top of them.
+
+    With provider ("auto"/None = deployment default), the run's LLM calls
+    all go through that provider — threaded via a ContextVar set before
+    asyncio.create_task, so every agent in the pipeline task inherits it.
     """
     if not prompt or not prompt.strip():
         raise ValueError("Prompt is required.")
+
+    # Validate early (before the task starts) so bad input is a 400, not a
+    # failed run. "auto" and None both mean the deployment default.
+    from config.llm_config import set_run_provider, provider_choices
+    valid = {c["id"] for c in provider_choices()}
+    if provider is None or provider == "auto":
+        provider = ""
+    elif provider not in valid:
+        raise ValueError(f"Unknown provider '{provider}'. Available: {sorted(valid)}")
 
     base_files: Optional[List[Dict[str, str]]] = None
     if base_run_id:
@@ -288,9 +302,13 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> st
             raise ValueError("Previous run has no files to continue from.")
 
     run_id = uuid.uuid4().hex[:12]
+    # ContextVar BEFORE create_task: the pipeline task (and every agent
+    # call inside it) inherits this value — zero agent-signature churn.
+    set_run_provider(provider)
     _runs[run_id] = {
         "status": "starting",
-        "logs": ["Run started."],
+        "logs": ["Run started.",
+                 f"Provider: {provider or 'auto'}."],
         "files": [],
         "prompt": prompt.strip(),
         "started_at": time.time(),  # scorecard duration

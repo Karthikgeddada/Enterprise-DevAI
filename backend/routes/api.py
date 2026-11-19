@@ -19,16 +19,24 @@ router = APIRouter()
 class PromptRequest(BaseModel):
     prompt: str
     base_run_id: Optional[str] = None  # set to continue developing an existing project
+    provider: Optional[str] = None  # per-run LLM provider ("auto"/None = deployment default)
 
 class GithubExportRequest(BaseModel):
     run_id: str
     repo_name: Optional[str] = None
     token: Optional[str] = None  # falls back to the GITHUB_TOKEN env var
 
+@router.get("/models")
+async def list_models():
+    """Provider options selectable per run (auto + configured providers).
+    Read-only like /runs."""
+    from config.llm_config import provider_choices
+    return {"choices": provider_choices()}
+
 @router.post("/generate", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 async def generate_project(req: PromptRequest):
     try:
-        run_id = await start_generation(req.prompt, req.base_run_id)
+        run_id = await start_generation(req.prompt, req.base_run_id, req.provider)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"run_id": run_id, "message": "Generation started"}

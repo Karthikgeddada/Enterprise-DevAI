@@ -344,6 +344,8 @@ $("generateBtn").addEventListener("click", async () => {
     try {
         const body = { prompt };
         if (isContinue) body.base_run_id = lastCompletedRunId;
+        const model = $("modelSelect").value || "auto";
+        if (model && model !== "auto") body.provider = model;
         const headers = { "Content-Type": "application/json" };
         if (window.API_KEY) headers["X-API-Key"] = window.API_KEY;
         const res = await fetch(`${API}/generate`, {
@@ -905,6 +907,36 @@ function renderScorecard(data) {
         root.appendChild(wrap);
     }
 }
+
+/* ---------- Model selector (GET /models, per-run provider choice) ---------- */
+async function initModelSelect() {
+    const sel = $("modelSelect");
+    try {
+        const res = await fetch(`${API}/models`);
+        const data = await res.json();
+        const choices = data.choices || [];
+        if (!choices.length) return;
+
+        for (const c of choices) {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.label;
+            sel.appendChild(opt);
+        }
+
+        const saved = localStorage.getItem("dtai-provider");
+        if (saved && choices.some((c) => c.id === saved)) sel.value = saved;
+        sel.addEventListener("change", () => {
+            localStorage.setItem("dtai-provider", sel.value);
+        });
+
+        // Only show the selector when there is a real choice to make.
+        if (choices.length > 1) sel.classList.remove("hidden");
+    } catch (e) {
+        /* selector stays hidden — provider falls back to server default */
+    }
+}
+initModelSelect();
 
 /* ---------- Platform stats (GET /stats) ---------- */
 async function openStatsModal() {

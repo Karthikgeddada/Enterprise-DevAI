@@ -1,6 +1,7 @@
 import os
 import threading
 import json
+from contextvars import ContextVar
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +10,39 @@ load_dotenv()
 # LLM Provider Configuration
 # -----------------------------
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
+
+# Per-run provider override (Feature 8: multi-model). set_run_provider()
+# is called at run start BEFORE asyncio.create_task, so the value is
+# inherited by the whole pipeline task — every agent's generate_response
+# call sees it without a single agent signature change.
+_run_provider: ContextVar[str] = ContextVar("run_provider", default="")
+
+
+def set_run_provider(name: str) -> None:
+    """Set the provider for the current run task chain; "" clears it."""
+    _run_provider.set(name or "")
+
+
+def get_run_provider() -> str:
+    """Per-run override if set, else "" (caller falls back to LLM_PROVIDER)."""
+    return _run_provider.get()
+
+
+def provider_choices() -> list:
+    """Provider options a client may choose per run: 'auto' plus every
+    provider with credentials configured on this deployment."""
+    choices = [{"id": "auto", "label": f"Auto ({LLM_PROVIDER})"}]
+    if os.getenv("GEMINI_API_KEY"):
+        choices.append({"id": "gemini", "label": "Gemini"})
+    if os.getenv("OPENROUTER_API_KEY"):
+        choices.append({"id": "openrouter", "label": "OpenRouter"})
+    if os.getenv("GROQ_API_KEYS") or os.getenv("GROQ_API_KEY"):
+        choices.append({"id": "groq", "label": "Groq"})
+    if LLM_PROVIDER == "ollama" or os.getenv("OLLAMA_BASE_URL"):
+        choices.append({"id": "ollama", "label": "Ollama (local)"})
+    return choices
+
+
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
@@ -63,8 +97,11 @@ async def generate_response(prompt_or_messages) -> str:
     else:
         messages = prompt_or_messages
 
+    # Per-run override (Feature 8) falls back to the deployment default.
+    provider = get_run_provider() or LLM_PROVIDER
+
     # For Local Ollama, we don't need failover
-    if LLM_PROVIDER == "ollama":
+    if provider == "ollama":
         try:
             client, _ = get_async_client()
             response = await client.chat.completions.create(
@@ -78,7 +115,7 @@ async def generate_response(prompt_or_messages) -> str:
             raise Exception(f"Local LLM failed. Ensure Ollama is running at {OLLAMA_BASE_URL}. Original error: {str(e)}")
 
     # Gemini (Google - hosted, cheap flash-lite models)
-    if LLM_PROVIDER == "gemini":
+    if provider == "gemini":
         from providers.gemini_provider import GeminiProvider
         from providers.base import GenerationRequest
         from providers.retry import RetryPolicy
@@ -103,7 +140,7 @@ async def generate_response(prompt_or_messages) -> str:
             raise Exception(f"Gemini API error: {str(e)}")  # same error surface as before
 
     # OpenRouter (default): one key, many models
-    if LLM_PROVIDER == "openrouter":
+    if provider == "openrouter":
         from providers.errors import ProviderError, classify_error
         from providers.retry import RetryPolicy
 
