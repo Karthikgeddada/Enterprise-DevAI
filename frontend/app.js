@@ -187,6 +187,7 @@ async function openHistoryRun(runId) {
         $("downloadBtn").href = `${API}/download/${runId}` +
             (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
         $("downloadBtn").classList.remove("hidden");
+        $("shareBtn").classList.remove("hidden"); // a history run can be shared too
         $("runLabel").textContent = "PROJECT FROM HISTORY";
         $("emptyExplorer").classList.add("hidden");
         renderTree(new Map());
@@ -271,17 +272,24 @@ $("newProjectBtn").addEventListener("click", () => {
     lastCompletedRunId = null;
     continueMode = false;
     clearError();
+    // Re-enable the input if we arrived from a shared read-only run.
+    $("promptInput").disabled = false;
     $("promptInput").value = "";
     $("promptInput").placeholder = "Describe the project you want to build…";
     $("newProjectBtn").classList.add("hidden");
     restoreButton("Build");
     setStatus("Ready");
     showWelcome();
+    // Leave shared-run mode: strip ?run= so refresh starts a clean session.
+    if (window.history && window.location.search) {
+        window.history.replaceState(null, "", window.location.pathname);
+    }
 });
 
 /* ---------- Run lifecycle ---------- */
 function resetUI(isContinue) {
     clearError();
+    $("shareBtn").classList.add("hidden");
     document.querySelectorAll("#stepsList li").forEach((li) => (li.className = ""));
     $("logsTerminal").textContent = isContinue
         ? "Applying your change…"
@@ -481,6 +489,7 @@ async function fetchFiles() {
         $("downloadBtn").href = `${API}/download/${currentRunId}` +
             (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
         $("downloadBtn").classList.remove("hidden");
+        $("shareBtn").classList.remove("hidden");
         $("runLabel").textContent = "GENERATED PROJECT";
         $("emptyExplorer").classList.add("hidden");
 
@@ -700,4 +709,69 @@ function renderDiffView(file) {
     body.appendChild(table);
     body.scrollTop = 0;
 }
+
+/* ---------- Shareable run links (?run=<id>) ---------- */
+function copyShareLink() {
+    if (!currentRunId) return;
+    const url = `${location.origin}${location.pathname}?run=${currentRunId}`;
+    const done = () => setStatus("Share link copied to clipboard");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, () => window.prompt("Copy this link:", url));
+    } else {
+        window.prompt("Copy this link:", url);
+    }
+}
+$("shareBtn").addEventListener("click", copyShareLink);
+
+async function loadSharedRun() {
+    // ?run=<id> opens a finished run read-only: files, diagrams, ZIP —
+    // everything a reviewer needs, no editing. "New project" unlocks the app.
+    const rid = new URLSearchParams(window.location.search).get("run");
+    if (!rid) return;
+    try {
+        const res = await fetch(`${API}/files/${rid}`);
+        const data = res.ok ? await res.json() : null;
+        const files = (data && data.files) || [];
+        if (!files.length) {
+            setStatus("Shared run not found (it may have expired)");
+            return;
+        }
+
+        allGeneratedFiles = files;
+        currentRunId = rid;
+        lastCompletedRunId = null; // read-only: continuing is not allowed
+        continueMode = false;
+        previousFilesSnapshot = [];
+        fileChangeMap = new Map();
+
+        const lineCount = allGeneratedFiles.reduce(
+            (n, f) => n + String(f.content || "").split("\n").length, 0
+        );
+        $("runMeta").textContent = `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
+        $("runMeta").classList.remove("hidden");
+        $("downloadBtn").href = `${API}/download/${rid}` +
+            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
+        $("downloadBtn").classList.remove("hidden");
+        $("runLabel").textContent = "SHARED RUN (READ-ONLY)";
+        $("emptyExplorer").classList.add("hidden");
+        renderTree(new Map());
+        previewCode(0);
+
+        // Read-only presentation: lock the input, offer a fresh start instead.
+        const input = $("promptInput");
+        input.disabled = true;
+        input.value = "";
+        input.placeholder = "You are viewing a shared read-only run…";
+        const btn = $("generateBtn");
+        btn.disabled = true;
+        btn.textContent = "Read-only";
+        $("newProjectBtn").classList.remove("hidden");
+        setStatus(`Viewing shared run ${rid}`);
+        document.title = "DevTeam AI — shared run";
+    } catch (e) {
+        console.error(e);
+        setStatus("Could not load the shared run");
+    }
+}
+loadSharedRun();
 
