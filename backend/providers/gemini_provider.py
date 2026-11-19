@@ -10,7 +10,7 @@ class GeminiProvider(BaseProvider):
 
     DEFAULT_MODELS = [
         ModelInfo(
-            id="gemini-flash-lite-latest", name="Gemini Flash Lite (latest, cheapest)",
+            id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite (latest, cheapest)",
             provider="gemini", context_window=1048576,
             supports_streaming=True, supports_structured=True, max_output_tokens=8192,
             pricing_per_1m_input=0.075, pricing_per_1m_output=0.30,
@@ -60,7 +60,7 @@ class GeminiProvider(BaseProvider):
 
     def __init__(self, api_key: Optional[str] = None, default_model: Optional[str] = None):
         self._api_key = api_key or self._get_api_key()
-        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("GEMINI_API_KEY")
@@ -74,6 +74,29 @@ class GeminiProvider(BaseProvider):
     def _get_client(self):
         from google import genai
         return genai.Client(api_key=self._api_key)
+
+    def _discover_model(self) -> Optional[str]:
+        """Pick the cheapest available Gemini flash model via ListModels.
+
+        Google retires/renames model aliases over time; this keeps the app
+        working when a configured id disappears (404 INVALID_MODEL).
+        """
+        preferred = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash")
+        try:
+            client = self._get_client()
+            available = [m.name.replace("models/", "") for m in client.models.list()]
+        except Exception:
+            return None
+        for cand in preferred:
+            if cand in available:
+                return cand
+        for name in available:
+            if "gemini" in name and "flash-lite" in name:
+                return name
+        for name in available:
+            if "gemini" in name and "flash" in name:
+                return name
+        return None
 
     async def generate(self, request: GenerationRequest) -> GenerationResponse:
         if not self.is_available():
@@ -106,11 +129,28 @@ class GeminiProvider(BaseProvider):
             if system_instruction:
                 config["system_instruction"] = system_instruction
 
-            response = await client.aio.models.generate_content(
-                model=request.model,
-                contents=contents,
-                config=config,
-            )
+            used_model = request.model
+            try:
+                response = await client.aio.models.generate_content(
+                    model=used_model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as first_err:
+                first = classify_error(first_err)
+                if first.category != ErrorCategory.INVALID_MODEL:
+                    raise first
+                # Configured model id is gone/renamed — discover a valid one
+                # from ListModels and retry once with it.
+                used_model = self._discover_model() or self._default_model
+                if used_model == request.model:
+                    raise first
+                response = await client.aio.models.generate_content(
+                    model=used_model,
+                    contents=contents,
+                    config=config,
+                )
+                self._default_model = used_model
             content = response.text or ""
             usage = None
             if hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -122,7 +162,7 @@ class GeminiProvider(BaseProvider):
                 }
             return GenerationResponse(
                 content=content,
-                model=request.model,
+                model=used_model,
                 provider=self.name,
                 usage=usage,
                 finish_reason=getattr(response, 'finish_reason', None),
