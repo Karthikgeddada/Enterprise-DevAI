@@ -481,8 +481,28 @@ function previewCode(index) {
     viewer.removeAttribute("data-highlighted");
     viewer.textContent = file.content;
 
-    if (window.hljs) {
+    if (ext === "mmd") {
+        renderMermaid(file.content); // raw source stays visible as fallback
+    } else if (window.hljs) {
         try { hljs.highlightElement(viewer); } catch (e) { /* non-fatal */ }
+    }
+}
+
+/* ---------- Mermaid diagram rendering (ARCHITECTURE.mmd files) ---------- */
+async function renderMermaid(content) {
+    const viewer = $("codeViewer");
+    viewer.removeAttribute("data-highlighted");
+    if (!window.mermaid) return; // CDN unavailable: raw source remains visible
+    try {
+        // The editor tile is dark in both themes, so always use the dark theme.
+        window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+        const { svg } = await window.mermaid.render("mermaid-svg-" + Date.now(), content);
+        const wrap = document.createElement("div");
+        wrap.className = "mermaid-wrap";
+        wrap.innerHTML = svg;
+        viewer.replaceChildren(wrap);
+    } catch (e) {
+        console.error(e); // invalid diagram: keep raw source visible
     }
 }
 

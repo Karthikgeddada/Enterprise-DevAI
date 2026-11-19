@@ -28,7 +28,7 @@ from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from agents.requirement_agent import requirement_agent
-from agents.architect_agent import architect_agent
+from agents.architect_agent import architect_agent, architecture_files
 from agents.coder_agent import coder_agent
 from agents.reviewer_agent import reviewer_agent
 from agents.debugger_agent import debugger_agent
@@ -52,6 +52,7 @@ class PipelineState(TypedDict, total=False):
     base_files: List[Dict[str, str]]
     requirements: str
     architecture: str
+    arch_files: List[Dict[str, str]]  # ARCHITECTURE.md/.mmd (see architect_agent)
     code_files: List[Dict[str, str]]
     coder_attempts: int
     review: str
@@ -87,7 +88,7 @@ def build_graph(set_status: SetStatus, log: Log):
     """
     # Deferred import: generation_service imports this module, so the shared
     # sanitize/context/merge helpers are pulled in at call time only.
-    from services.generation_service import _merge_files, _project_context, _sanitize_files
+    from services.generation_service import _dedupe_files, _merge_files, _project_context, _sanitize_files
 
     async def requirements_node(state: PipelineState) -> Dict[str, Any]:
         set_status("analyzing_requirements")
@@ -101,7 +102,7 @@ def build_graph(set_status: SetStatus, log: Log):
         log("Designing architecture...")
         architecture = await architect_agent(state["prompt"], state["requirements"])
         log("Architecture designed.")
-        return {"architecture": architecture}
+        return {"architecture": architecture, "arch_files": architecture_files(architecture)}
 
     async def code_node(state: PipelineState) -> Dict[str, Any]:
         set_status("generating_code")
@@ -180,13 +181,16 @@ def build_graph(set_status: SetStatus, log: Log):
         return {"docs_files": docs_files}
 
     async def package_node(state: PipelineState) -> Dict[str, Any]:
+        arch_files = state.get("arch_files") or []
         await packager_agent({
             "run_id": state["run_id"],
             "code_files": state["code_files"],
             "tests_files": state["test_files"],
-            "docs_files": state["docs_files"],
+            "docs_files": arch_files + state["docs_files"],
         })
-        final_files = state["code_files"] + state["test_files"] + state["docs_files"]
+        final_files = _dedupe_files(
+            arch_files + state["code_files"] + state["test_files"] + state["docs_files"]
+        )
         return {"final_files": final_files}
 
     def route_after_code(state: PipelineState) -> str:

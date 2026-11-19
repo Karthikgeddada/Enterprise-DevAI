@@ -14,7 +14,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from agents.requirement_agent import requirement_agent
-from agents.architect_agent import architect_agent
+from agents.architect_agent import architect_agent, architecture_files
 from agents.coder_agent import coder_agent
 from agents.reviewer_agent import reviewer_agent
 from agents.debugger_agent import debugger_agent
@@ -107,6 +107,22 @@ def _merge_files(base_files: List[Dict[str, str]], changes: List[Dict[str, str]]
     return [{"path": p, "content": c} for p, c in merged.items()]
 
 
+def _dedupe_files(files: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Drop duplicate paths, first occurrence wins.
+
+    On continue runs the freshly generated ARCHITECTURE docs precede the
+    copies inherited from the base project, so the new ones are kept.
+    """
+    seen = set()
+    out: List[Dict[str, str]] = []
+    for f in files:
+        if f["path"] in seen:
+            continue
+        seen.add(f["path"])
+        out.append(f)
+    return out
+
+
 async def _run_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict[str, str]]] = None) -> None:
     """Dispatch to the selected pipeline engine.
 
@@ -163,6 +179,9 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
         log("Designing architecture...")
         architecture = await architect_agent(prompt, requirements)
         log("Architecture designed.")
+        # Persist the design doc + Mermaid diagram as project files when the
+        # architect included a mermaid block (empty otherwise).
+        arch_files = architecture_files(architecture)
 
         run["status"] = "generating_code"
         if base_files:
@@ -218,10 +237,10 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
             "run_id": run_id,
             "code_files": code_files,
             "tests_files": test_files,
-            "docs_files": docs_files,
+            "docs_files": arch_files + docs_files,
         })
 
-        run["files"] = code_files + test_files + docs_files
+        run["files"] = _dedupe_files(arch_files + code_files + test_files + docs_files)
         run["status"] = "completed"
         log("Done. Project packaged as ZIP.")
     except Exception as e:  # surface every failure to the UI, never crash the app

@@ -415,6 +415,16 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 .diff-table td.diff-del { background: rgba(248, 81, 73, 0.14); }
 .diff-table td.diff-gap { background: var(--panel); opacity: 0.45; }
 
+/* ---- Mermaid architecture diagrams (.mmd files) ---- */
+.mermaid-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 28px;
+    overflow: auto;
+}
+.mermaid-wrap svg { max-width: 100%; height: auto; }
+
 @media (max-width: 980px) {
     .diff-head { padding: 6px 8px 0; }
     .diff-table td { padding: 0 8px; font-size: 11px; }
