@@ -1,4 +1,5 @@
 from enum import Enum
+import re
 from typing import Optional
 
 
@@ -36,6 +37,19 @@ def classify_error(exc: Exception) -> ProviderError:
     msg = str(exc).lower()
     status_code = getattr(exc, 'status_code', None) or getattr(exc, 'code', None)
 
+    # google-genai and other SDKs often embed the HTTP status only in the
+    # message text ("503 UNAVAILABLE. {'error': {'code': 503, ...}}");
+    # recover it so 5xx responses classify as a retryable outage.
+    if status_code is None:
+        m = re.search(r"'code':\s*(\d{3})", str(exc)) or re.search(
+            r"\b([45]\d\d)\s+[A-Z_]+", str(exc)
+        )
+        if m:
+            try:
+                status_code = int(m.group(1))
+            except (ValueError, TypeError):
+                pass
+
     # Authentication errors
     if status_code == 401 or 'invalid_api_key' in msg or 'unauthorized' in msg or 'invalid key' in msg or 'invalid api key' in msg:
         return ProviderError(str(exc), ErrorCategory.AUTH_ERROR, retryable=False, status_code=status_code)
@@ -64,8 +78,19 @@ def classify_error(exc: Exception) -> ProviderError:
     if 'timeout' in msg or 'timed out' in msg or status_code == 408:
         return ProviderError(str(exc), ErrorCategory.NETWORK_TIMEOUT, retryable=True, status_code=status_code)
 
-    # Provider outage (5xx)
-    if status_code and 500 <= status_code < 600:
+    # Provider outage (5xx, or explicit overload wording Google/OpenAI use
+    # during demand spikes — often arrives with no structured status at all)
+    if (status_code and 500 <= status_code < 600) or any(
+        w in msg
+        for w in (
+            "unavailable",
+            "overloaded",
+            "overload",
+            "high demand",
+            "spikes in demand",
+            "try again later",
+        )
+    ):
         return ProviderError(str(exc), ErrorCategory.PROVIDER_OUTAGE, retryable=True, status_code=status_code)
 
     if 'connection' in msg or 'unreachable' in msg or 'refused' in msg or 'reset' in msg:

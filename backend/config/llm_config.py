@@ -79,10 +79,16 @@ async def generate_response(prompt_or_messages) -> str:
 
     # Gemini (Google - hosted, cheap flash-lite models)
     if LLM_PROVIDER == "gemini":
-        try:
-            from providers.gemini_provider import GeminiProvider
-            from providers.base import GenerationRequest
-            provider = GeminiProvider()
+        from providers.gemini_provider import GeminiProvider
+        from providers.base import GenerationRequest
+        from providers.retry import RetryPolicy
+
+        provider = GeminiProvider()
+        # Demand spikes ("503 ... high demand") are common on the free tier;
+        # bounded backoff retries them instead of failing the whole run.
+        retry = RetryPolicy(max_retries=4)
+
+        async def _gemini_call() -> str:
             response = await provider.generate(GenerationRequest(
                 messages=messages,
                 model=GEMINI_MODEL,
@@ -90,22 +96,38 @@ async def generate_response(prompt_or_messages) -> str:
                 max_tokens=4096,
             ))
             return response.content
+
+        try:
+            return await retry.execute_with_retry(_gemini_call)
         except Exception as e:
-            raise Exception(f"Gemini API error: {str(e)}")
+            raise Exception(f"Gemini API error: {str(e)}")  # same error surface as before
 
     # OpenRouter (default): one key, many models
     if LLM_PROVIDER == "openrouter":
+        from providers.errors import ProviderError, classify_error
+        from providers.retry import RetryPolicy
+
+        retry = RetryPolicy(max_retries=4)
+
+        async def _openrouter_call() -> str:
+            try:
+                client, _ = get_async_client()
+                response = await client.chat.completions.create(
+                    model=OPENROUTER_MODEL,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=4096
+                )
+                return response.choices[0].message.content
+            except ProviderError:
+                raise
+            except Exception as e:
+                raise classify_error(e)  # normalize so retryability applies
+
         try:
-            client, _ = get_async_client()
-            response = await client.chat.completions.create(
-                model=OPENROUTER_MODEL,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=4096
-            )
-            return response.choices[0].message.content
+            return await retry.execute_with_retry(_openrouter_call)
         except Exception as e:
-            raise Exception(f"OpenRouter API error: {str(e)}")
+            raise Exception(f"OpenRouter API error: {str(e)}")  # same error surface as before
 
     # Groq Key Failover Logic
     last_error = "Unknown error"
