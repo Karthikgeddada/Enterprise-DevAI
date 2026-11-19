@@ -617,6 +617,8 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 }
 .hint-xs { font-size: 11px; margin: 6px 0 0; }
 .modal a { color: var(--accent); word-break: break-all; }
+.modal.wide { width: min(560px, 94vw); }
+.modal .score-tiles { margin-top: 16px; }
 
 @media (max-width: 980px) {
     .diff-head { padding: 6px 8px 0; }

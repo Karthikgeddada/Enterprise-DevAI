@@ -906,6 +906,103 @@ function renderScorecard(data) {
     }
 }
 
+/* ---------- Platform stats (GET /stats) ---------- */
+async function openStatsModal() {
+    const body = $("statsBody");
+    body.textContent = "Loading…";
+    $("statsModal").classList.remove("hidden");
+    try {
+        const res = await fetch(`${API}/stats`);
+        const data = await res.json();
+        renderStats(data, body);
+    } catch (e) {
+        body.textContent = "Could not load stats.";
+    }
+}
+
+function renderStats(data, body) {
+    body.innerHTML = "";
+
+    const runs = data.runs || {};
+    const builds = data.builds || {};
+    // (No ?? here: esprima, the syntax gate, predates ES2020.)
+    const totalRuns = runs.total != null ? runs.total : 0;
+    const avgFiles = builds.avg_files != null ? builds.avg_files : "—";
+
+    const tiles = document.createElement("div");
+    tiles.className = "score-tiles";
+    const completed = (runs.by_status || {}).completed || 0;
+    const failed = (runs.by_status || {}).failed || 0;
+    const stats = [
+        [`${totalRuns}`, "runs"],
+        [`${completed}`, "completed"],
+        [`${failed}`, "failed"],
+        [`${fmtDuration(builds.avg_duration_seconds)}`, "avg build"],
+        [`${avgFiles}`, "avg files"],
+        [`${builds.self_heals_total || 0}`, "self-heals"],
+    ];
+    for (const [value, label] of stats) {
+        const tile = document.createElement("div");
+        tile.className = "score-tile";
+        const v = document.createElement("strong");
+        v.textContent = value;
+        const l = document.createElement("span");
+        l.textContent = label;
+        tile.appendChild(v);
+        tile.appendChild(l);
+        tiles.appendChild(tile);
+    }
+    body.appendChild(tiles);
+
+    const causes = runs.failure_causes || {};
+    const causeKeys = Object.keys(causes);
+    if (causeKeys.length) {
+        const p = document.createElement("p");
+        p.className = "dim";
+        p.style.fontSize = "12px";
+        p.textContent = "failure causes: " +
+            causeKeys.map((k) => `${k} ×${causes[k]}`).join(", ");
+        body.appendChild(p);
+    }
+
+    const langs = Object.entries(data.languages || {});
+    if (langs.length) {
+        const wrap = document.createElement("div");
+        wrap.className = "score-langs";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Top languages";
+        wrap.appendChild(h3);
+        const maxLines = Math.max(...langs.map(([, v]) => v.lines), 1);
+        for (const [ext, v] of langs) {
+            const row = document.createElement("div");
+            row.className = "lang-row";
+            const name = document.createElement("span");
+            name.className = "lang-name";
+            name.textContent = `.${ext}`;
+            const track = document.createElement("div");
+            track.className = "lang-bar-track";
+            const fill = document.createElement("div");
+            fill.className = "lang-bar";
+            fill.style.width = `${Math.max((v.lines / maxLines) * 100, 3)}%`;
+            track.appendChild(fill);
+            const count = document.createElement("span");
+            count.className = "lang-count";
+            count.textContent = `${v.files}f · ${v.lines.toLocaleString()} lines`;
+            row.appendChild(name);
+            row.appendChild(track);
+            row.appendChild(count);
+            wrap.appendChild(row);
+        }
+        body.appendChild(wrap);
+    }
+}
+
+$("statsBtn").addEventListener("click", openStatsModal);
+$("statsClose").addEventListener("click", () => $("statsModal").classList.add("hidden"));
+$("statsModal").addEventListener("click", (e) => {
+    if (e.target === $("statsModal")) $("statsModal").classList.add("hidden");
+});
+
 /* ---------- Push to GitHub (user's PAT, POST /export/github) ---------- */
 let ghDone = false;
 

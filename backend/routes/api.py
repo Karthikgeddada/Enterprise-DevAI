@@ -10,6 +10,7 @@ import os
 from services.generation_service import start_generation, get_status, get_files, get_run
 from services.github_export import push_project_to_github
 from services.scorecard import compute_scorecard
+from services.observability import compute_stats
 from services import run_store
 from services.guard import rate_limit, require_api_key
 
@@ -86,6 +87,13 @@ async def list_runs():
     Read-only like /status, so it stays open in the public demo.
     """
     return {"runs": run_store.list_runs(50)}
+
+@router.get("/stats")
+async def get_stats():
+    """Operational stats over the run store: status counts, failure causes,
+    avg build time/files/lines, self-heal total, top languages.
+    Read-only like /runs."""
+    return compute_stats()
 
 @router.get("/scorecard/{run_id}")
 async def get_scorecard(run_id: str):

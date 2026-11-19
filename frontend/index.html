@@ -68,6 +68,9 @@
                 </div>
                 <ul class="run-list hidden" id="runList"></ul>
             </div>
+            <div class="panel-foot">
+                <button id="statsBtn" class="btn-ghost">Platform stats</button>
+            </div>
         </aside>
 
         <main class="editor-area">
@@ -156,6 +159,16 @@ Describe a project to begin.</div>
         <span id="statusLeft">✦ DevTeam AI</span>
         <span class="sb-right"><span id="statusRight">Ready</span></span>
     </footer>
+
+    <div class="modal-scrim hidden" id="statsModal">
+        <div class="modal wide">
+            <h3>Platform stats</h3>
+            <div id="statsBody"></div>
+            <div class="modal-actions">
+                <button id="statsClose" class="btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
 
     <div class="modal-scrim hidden" id="ghModal">
         <div class="modal" id="ghModalCard">
