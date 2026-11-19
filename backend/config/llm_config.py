@@ -38,6 +38,8 @@ def provider_choices() -> list:
         choices.append({"id": "openrouter", "label": "OpenRouter"})
     if os.getenv("GROQ_API_KEYS") or os.getenv("GROQ_API_KEY"):
         choices.append({"id": "groq", "label": "Groq"})
+    if os.getenv("DEEPSEEK_API_KEY"):
+        choices.append({"id": "deepseek", "label": "DeepSeek"})
     if LLM_PROVIDER == "ollama" or os.getenv("OLLAMA_BASE_URL"):
         choices.append({"id": "ollama", "label": "Ollama (local)"})
     return choices
@@ -46,6 +48,8 @@ def provider_choices() -> list:
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")  # keep current: Google retires -latest aliases
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama-3.3-70b-versatile" if LLM_PROVIDER == "groq" else "llama3:8b")
 
@@ -165,6 +169,38 @@ async def generate_response(prompt_or_messages) -> str:
             return await retry.execute_with_retry(_openrouter_call)
         except Exception as e:
             raise Exception(f"OpenRouter API error: {str(e)}")  # same error surface as before
+
+    # DeepSeek: OpenAI-compatible API, cheap coding models
+    if provider == "deepseek":
+        from openai import AsyncOpenAI
+        from providers.errors import ProviderError, classify_error
+        from providers.retry import RetryPolicy
+
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise Exception("DEEPSEEK_API_KEY is missing! Get one at https://platform.deepseek.com and set it in your environment (or .env / Render env vars).")
+
+        retry = RetryPolicy(max_retries=4)
+
+        async def _deepseek_call() -> str:
+            try:
+                client = AsyncOpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+                response = await client.chat.completions.create(
+                    model=DEEPSEEK_MODEL,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=4096
+                )
+                return response.choices[0].message.content
+            except ProviderError:
+                raise
+            except Exception as e:
+                raise classify_error(e)  # normalize so retryability applies
+
+        try:
+            return await retry.execute_with_retry(_deepseek_call)
+        except Exception as e:
+            raise Exception(f"DeepSeek API error: {str(e)}")
 
     # Groq Key Failover Logic
     last_error = "Unknown error"

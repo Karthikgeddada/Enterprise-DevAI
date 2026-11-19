@@ -43,6 +43,59 @@ def test_provider_choices_list_configured(monkeypatch):
     assert {"auto", "gemini", "openrouter"} <= choices
 
 
+def test_provider_choices_include_deepseek(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    assert "deepseek" not in {c["id"] for c in provider_choices()}
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "x")
+    assert "deepseek" in {c["id"] for c in provider_choices()}
+
+
+def test_generate_response_deepseek_path(monkeypatch):
+    """DeepSeek provider: routed through AsyncOpenAI with the DeepSeek base
+    URL and model, retried like the other hosted providers."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    set_run_provider("")
+
+    captured = {}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _M:
+                content = "deepseek says hi"
+
+            class _C:
+                message = _M()
+
+            class _R:
+                choices = [_C()]
+
+            return _R()
+
+    class FakeOpenAI:
+        def __init__(self, api_key=None, base_url=None):
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    import config.llm_config as lc
+    monkeypatch.setattr("openai.AsyncOpenAI", FakeOpenAI)
+    monkeypatch.setattr(lc, "LLM_PROVIDER", "gemini")  # default differs from override
+
+    async def scenario():
+        set_run_provider("deepseek")
+        out = await llm_config.generate_response("hi")
+        set_run_provider("")
+        return out
+
+    out = asyncio.run(scenario())
+    assert out == "deepseek says hi"
+    assert captured["api_key"] == "test-key"
+    assert captured["base_url"] == lc.DEEPSEEK_BASE_URL
+    assert captured["model"] == lc.DEEPSEEK_MODEL
+
+
 # ---------------------------------------------------------- endpoints
 def test_models_endpoint(client):
     r = client.get("/models")
