@@ -14,3 +14,8 @@ langgraph>=0.2.0
 
 # Push a finished run to GitHub (services/github_export.py, POST /export/github).
 pygithub>=2.4.0
+
+# Postgres run store (services/run_store.py). Only used when DATABASE_URL is
+# set (e.g. Neon — use the pooled connection string). SQLite remains the
+# default when it is unset.
+psycopg2-binary>=2.9.9

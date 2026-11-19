@@ -98,30 +98,5 @@ def compute_stats(limit: int = 500) -> Dict[str, Any]:
 
 
 def _fetch_runs(limit: int) -> List[Dict[str, Any]]:
-    """Raw run rows (logs/files decoded) straight from the store.
-
-    Goes through run_store._connect() so a missing DB file/table is created
-    instead of erroring ("no such table") — stats on a fresh install are
-    zeros, not an error.
-    """
-    if run_store._broken:
-        return []
-    conn = run_store._connect()
-    try:
-        rows = conn.execute(
-            """SELECT status, logs, files, started_at, completed_at
-               FROM runs ORDER BY updated_at DESC LIMIT ?""",
-            (limit,),
-        ).fetchall()
-    finally:
-        conn.close()
-    return [
-        {
-            "status": r[0],
-            "logs": json.loads(r[1]),
-            "files": json.loads(r[2]),
-            "started_at": r[3],
-            "completed_at": r[4],
-        }
-        for r in rows
-    ]
+    """Raw run rows (logs/files decoded), backend-aware via run_store."""
+    return run_store.fetch_stats_rows(limit)

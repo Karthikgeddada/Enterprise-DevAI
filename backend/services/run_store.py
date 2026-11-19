@@ -1,22 +1,26 @@
-"""SQLite persistence for generation runs.
+"""Persistence for generation runs: SQLite by default, Postgres when
+DATABASE_URL is set (e.g. Neon — use the POOLED connection string on
+serverless hosts).
 
 The in-memory dict in generation_service stays the live working copy (the
 pipeline mutates status/logs on every step). This module mirrors every
-state change to SQLite and rehydrates runs after a worker restart, so
+state change to the DB and rehydrates runs after a worker restart, so
 continue-mode ("Previous run not found. The server may have restarted.")
 survives restarts and polling clients keep their history.
 
-Honest scoping (on free-tier hosts the disk is often ephemeral anyway):
-- Survives: worker crashes/restarts within a deploy, local dev restarts.
-- Does not survive: filesystem resets on redeploy/scale-out; for that you'd
-  move to managed Postgres. This layer is deliberately structured so that
-  swap is a drop-in (same save/load contract).
+Backends
+--------
+- sqlite: RUNS_DB path (default data/runs.db). Survives worker crashes
+  within a deploy; not filesystem resets on redeploy.
+- postgres: DATABASE_URL. Survives redeploys and scale-out entirely —
+  the recommended production setup. Same save/load contract, same JSON
+  column layout (logs/files stored as JSON text), so both backends are
+  byte-identical in behavior.
 
-Safety: if the DB is unavailable (bad path, disk full, read-only FS) the
-module disables itself and the app keeps running purely in memory -
-persistence must never take the app down.
+Safety: if the DB is unavailable the module disables itself and the app
+keeps running purely in memory - persistence must never take it down.
 
-Env: RUNS_DB (default data/runs.db).
+Env: DATABASE_URL (postgres) or RUNS_DB (sqlite, default data/runs.db).
 """
 import json
 import os
@@ -28,11 +32,42 @@ from typing import Any, Dict, List, Optional
 
 _lock = threading.Lock()
 _broken = False  # set on first DB error; disables persistence for the process
+_pg = None  # lazily imported psycopg2 module
 
 
 def _db_path() -> str:
     # Read lazily so tests (and env changes) are picked up.
     return os.getenv("RUNS_DB", "data/runs.db")
+
+
+def _backend() -> str:
+    return "postgres" if os.getenv("DATABASE_URL") else "sqlite"
+
+
+def _pg_connect():
+    """Open a Postgres connection (pooled URL recommended on serverless)."""
+    global _pg
+    if _pg is None:
+        import psycopg2
+        _pg = psycopg2
+    return _pg.connect(os.getenv("DATABASE_URL"), connect_timeout=10)
+
+
+def _pg_ensure_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """CREATE TABLE IF NOT EXISTS runs (
+                   run_id       TEXT PRIMARY KEY,
+                   status       TEXT NOT NULL,
+                   logs         TEXT NOT NULL,
+                   files        TEXT NOT NULL,
+                   prompt       TEXT NOT NULL DEFAULT '',
+                   updated_at   DOUBLE PRECISION NOT NULL,
+                   started_at   DOUBLE PRECISION,
+                   completed_at DOUBLE PRECISION
+               )"""
+        )
+    conn.commit()
 
 
 def _connect() -> sqlite3.Connection:
@@ -79,6 +114,39 @@ def save(
         return
     try:
         with _lock:
+            if _backend() == "postgres":
+                conn = _pg_connect()
+                try:
+                    _pg_ensure_table(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """INSERT INTO runs (run_id, status, logs, files, prompt, updated_at,
+                                                  started_at, completed_at)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                               ON CONFLICT (run_id) DO UPDATE SET
+                                   status = EXCLUDED.status,
+                                   logs = EXCLUDED.logs,
+                                   files = EXCLUDED.files,
+                                   prompt = EXCLUDED.prompt,
+                                   updated_at = EXCLUDED.updated_at,
+                                   started_at = EXCLUDED.started_at,
+                                   completed_at = EXCLUDED.completed_at""",
+                            (
+                                run_id,
+                                status,
+                                json.dumps([str(l) for l in logs]),
+                                json.dumps(files),
+                                prompt,
+                                time.time(),
+                                started_at,
+                                completed_at,
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+                return
+
             conn = _connect()
             try:
                 conn.execute(
@@ -117,15 +185,29 @@ def load(run_id: str) -> Optional[Dict[str, Any]]:
         return None
     try:
         with _lock:
-            conn = _connect()
-            try:
-                row = conn.execute(
-                    """SELECT status, logs, files, prompt, started_at, completed_at
-                       FROM runs WHERE run_id = ?""",
-                    (run_id,),
-                ).fetchone()
-            finally:
-                conn.close()
+            if _backend() == "postgres":
+                conn = _pg_connect()
+                try:
+                    _pg_ensure_table(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT status, logs, files, prompt, started_at, completed_at
+                               FROM runs WHERE run_id = %s""",
+                            (run_id,),
+                        )
+                        row = cur.fetchone()
+                finally:
+                    conn.close()
+            else:
+                conn = _connect()
+                try:
+                    row = conn.execute(
+                        """SELECT status, logs, files, prompt, started_at, completed_at
+                           FROM runs WHERE run_id = ?""",
+                        (run_id,),
+                    ).fetchone()
+                finally:
+                    conn.close()
         if row is None:
             return None
         return {
@@ -151,16 +233,31 @@ def list_runs(limit: int = 50) -> List[Dict[str, Any]]:
         return []
     try:
         with _lock:
-            conn = _connect()
-            try:
-                rows = conn.execute(
-                    """SELECT run_id, status, prompt, updated_at,
-                              json_array_length(files)
-                       FROM runs ORDER BY updated_at DESC LIMIT ?""",
-                    (limit,),
-                ).fetchall()
-            finally:
-                conn.close()
+            if _backend() == "postgres":
+                conn = _pg_connect()
+                try:
+                    _pg_ensure_table(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT run_id, status, prompt, updated_at,
+                                      json_array_length(files::json)
+                               FROM runs ORDER BY updated_at DESC LIMIT %s""",
+                            (limit,),
+                        )
+                        rows = cur.fetchall()
+                finally:
+                    conn.close()
+            else:
+                conn = _connect()
+                try:
+                    rows = conn.execute(
+                        """SELECT run_id, status, prompt, updated_at,
+                                  json_array_length(files)
+                           FROM runs ORDER BY updated_at DESC LIMIT ?""",
+                        (limit,),
+                    ).fetchall()
+                finally:
+                    conn.close()
         return [
             {
                 "run_id": r[0],
@@ -172,6 +269,50 @@ def list_runs(limit: int = 50) -> List[Dict[str, Any]]:
             for r in rows
         ]
     except Exception as e:  # noqa: BLE001 - the dashboard must never 500
+        _fail(e)
+        return []
+
+
+def fetch_stats_rows(limit: int = 500) -> List[Dict[str, Any]]:
+    """Decoded run rows for observability, backend-correct SQL. Never raises."""
+    if _broken:
+        return []
+    try:
+        with _lock:
+            if _backend() == "postgres":
+                conn = _pg_connect()
+                try:
+                    _pg_ensure_table(conn)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT status, logs, files, started_at, completed_at
+                               FROM runs ORDER BY updated_at DESC LIMIT %s""",
+                            (limit,),
+                        )
+                        rows = cur.fetchall()
+                finally:
+                    conn.close()
+            else:
+                conn = _connect()
+                try:
+                    rows = conn.execute(
+                        """SELECT status, logs, files, started_at, completed_at
+                           FROM runs ORDER BY updated_at DESC LIMIT ?""",
+                        (limit,),
+                    ).fetchall()
+                finally:
+                    conn.close()
+        return [
+            {
+                "status": r[0],
+                "logs": json.loads(r[1]),
+                "files": json.loads(r[2]),
+                "started_at": r[3],
+                "completed_at": r[4],
+            }
+            for r in rows
+        ]
+    except Exception as e:  # noqa: BLE001
         _fail(e)
         return []
 
