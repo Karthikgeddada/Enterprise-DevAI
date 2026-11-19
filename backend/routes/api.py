@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import os
 from services.generation_service import start_generation, get_status, get_files
+from services import run_store
 from services.guard import rate_limit, require_api_key
 
 router = APIRouter()
@@ -70,6 +71,14 @@ async def stream_run(run_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+@router.get("/runs")
+async def list_runs():
+    """Run history for the dashboard: newest first, capped at 50.
+
+    Read-only like /status, so it stays open in the public demo.
+    """
+    return {"runs": run_store.list_runs(50)}
 
 @router.get("/files/{run_id}")
 async def get_project_files(run_id: str):

@@ -35,7 +35,10 @@ def _persist(run_id: str) -> None:
     """Mirror the live run dict to SQLite. Never raises, never blocks long."""
     run = _runs.get(run_id)
     if run is not None:
-        run_store.save(run_id, run["status"], run["logs"], run.get("files", []))
+        run_store.save(
+            run_id, run["status"], run["logs"], run.get("files", []),
+            run.get("prompt", ""),
+        )
 
 
 def _load(run_id: str) -> Optional[Dict[str, Any]]:
@@ -56,7 +59,14 @@ def _load(run_id: str) -> Optional[Dict[str, Any]]:
     if status not in _TERMINAL:
         status = "failed"
         logs.append("Server restarted mid-run; this run can no longer finish. Please generate again.")
-    run = {"status": status, "logs": logs, "files": data.get("files", [])}
+    # Prompt travels with the run so the history dashboard can show it and
+    # continue-mode keeps working after a restart rehydrates from SQLite.
+    run = {
+        "status": status,
+        "logs": logs,
+        "files": data.get("files", []),
+        "prompt": data.get("prompt", ""),
+    }
     _runs[run_id] = run
     return run
 
@@ -270,7 +280,12 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> st
             raise ValueError("Previous run has no files to continue from.")
 
     run_id = uuid.uuid4().hex[:12]
-    _runs[run_id] = {"status": "starting", "logs": ["Run started."], "files": []}
+    _runs[run_id] = {
+        "status": "starting",
+        "logs": ["Run started."],
+        "files": [],
+        "prompt": prompt.strip(),
+    }
     _persist(run_id)
     asyncio.create_task(_run_pipeline(run_id, prompt.strip(), base_files))
     return run_id

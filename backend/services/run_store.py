@@ -124,6 +124,41 @@ def load(run_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def list_runs(limit: int = 50) -> List[Dict[str, Any]]:
+    """Newest-first run summaries for the history dashboard. Never raises.
+
+    Files are counted in SQL (json_array_length) so the big JSON blobs are
+    never parsed for the listing. Returns [] when persistence is disabled.
+    """
+    if _broken:
+        return []
+    try:
+        with _lock:
+            conn = _connect()
+            try:
+                rows = conn.execute(
+                    """SELECT run_id, status, prompt, updated_at,
+                              json_array_length(files)
+                       FROM runs ORDER BY updated_at DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+            finally:
+                conn.close()
+        return [
+            {
+                "run_id": r[0],
+                "status": r[1],
+                "prompt": r[2] or "",
+                "updated_at": r[3],
+                "file_count": r[4] if isinstance(r[4], int) else 0,
+            }
+            for r in rows
+        ]
+    except Exception as e:  # noqa: BLE001 - the dashboard must never 500
+        _fail(e)
+        return []
+
+
 def reset_broken() -> None:
     """Test helper: re-enable persistence after a simulated failure."""
     global _broken

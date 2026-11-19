@@ -21,14 +21,17 @@ const isNarrow = () => window.innerWidth <= 980;
 function syncScrim() {
     const anyOpen = isNarrow() &&
         (!$("sidePanel").classList.contains("collapsed") ||
-         !$("aiPanel").classList.contains("collapsed"));
+         !$("aiPanel").classList.contains("collapsed") ||
+         !$("historyPanel").classList.contains("collapsed"));
     $("scrim").classList.toggle("show", anyOpen);
 }
 function closeOverlays() {
     $("sidePanel").classList.add("collapsed");
     $("aiPanel").classList.add("collapsed");
+    $("historyPanel").classList.add("collapsed");
     $("actExplorer").classList.remove("active");
     $("actAI").classList.remove("active");
+    $("actHistory").classList.remove("active");
     syncScrim();
 }
 
@@ -64,8 +67,27 @@ function bindPanelToggle(btnId, panelId) {
         syncScrim();
     });
 }
-bindPanelToggle("actExplorer", "sidePanel");
 bindPanelToggle("actAI", "aiPanel");
+/* Explorer and History share the left rail: opening one closes the other. */
+$("actExplorer").addEventListener("click", () => {
+    const collapsed = $("sidePanel").classList.toggle("collapsed");
+    $("actExplorer").classList.toggle("active", !collapsed);
+    if (!collapsed) {
+        $("historyPanel").classList.add("collapsed");
+        $("actHistory").classList.remove("active");
+    }
+    syncScrim();
+});
+$("actHistory").addEventListener("click", () => {
+    const collapsed = $("historyPanel").classList.toggle("collapsed");
+    $("actHistory").classList.toggle("active", !collapsed);
+    if (!collapsed) {
+        $("sidePanel").classList.add("collapsed");
+        $("actExplorer").classList.remove("active");
+        loadRuns();
+    }
+    syncScrim();
+});
 if (window.innerWidth <= 980) {
     $("sidePanel").classList.add("collapsed");
     $("aiPanel").classList.add("collapsed");
@@ -74,6 +96,116 @@ if (window.innerWidth <= 980) {
 }
 $("scrim").addEventListener("click", closeOverlays);
 window.addEventListener("resize", syncScrim);
+
+/* ---------- Run history (GET /runs) ---------- */
+async function loadRuns() {
+    try {
+        const res = await fetch(`${API}/runs`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const runs = data.runs || [];
+        const list = $("runList");
+        list.innerHTML = "";
+        $("emptyHistory").classList.toggle("hidden", runs.length > 0);
+        if (!runs.length) {
+            list.classList.add("hidden");
+            return;
+        }
+        runs.forEach((run) => {
+            const li = document.createElement("li");
+            li.className = "run-item";
+
+            const head = document.createElement("div");
+            head.className = "run-head";
+            const dot = document.createElement("span");
+            dot.className = "run-dot " +
+                (run.status === "completed" ? "ok" : run.status === "failed" ? "bad" : "mid");
+            const id = document.createElement("span");
+            id.className = "run-id";
+            id.textContent = run.run_id;
+            head.appendChild(dot);
+            head.appendChild(id);
+
+            const prompt = document.createElement("div");
+            prompt.className = "run-prompt";
+            prompt.textContent = (run.prompt || "untitled").slice(0, 90);
+            prompt.title = run.prompt || "";
+
+            const meta = document.createElement("div");
+            meta.className = "run-meta-line";
+            const when = run.updated_at
+                ? new Date(run.updated_at * 1000).toLocaleString()
+                : "";
+            meta.textContent = `${run.status} · ${run.file_count} files · ${when}`;
+
+            li.appendChild(head);
+            li.appendChild(prompt);
+            li.appendChild(meta);
+
+            if (run.status === "completed") {
+                const actions = document.createElement("div");
+                actions.className = "run-actions";
+                const openBtn = document.createElement("button");
+                openBtn.className = "link-btn";
+                openBtn.textContent = "Open";
+                openBtn.addEventListener("click", () => openHistoryRun(run.run_id));
+                actions.appendChild(openBtn);
+                li.appendChild(actions);
+            }
+
+            list.appendChild(li);
+        });
+        list.classList.remove("hidden");
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function openHistoryRun(runId) {
+    // Re-open a past run: load its files into the explorer and arm
+    // continue mode so "Continue building" iterates on it.
+    try {
+        const res = await fetch(`${API}/files/${runId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const files = data.files || [];
+        if (!files.length) return;
+
+        allGeneratedFiles = files;
+        currentRunId = runId;
+        lastCompletedRunId = runId;
+        continueMode = true;
+        previousFilesSnapshot = [];
+        fileChangeMap = new Map();
+        pendingIsContinue = false;
+
+        const lineCount = allGeneratedFiles.reduce(
+            (n, f) => n + String(f.content || "").split("\n").length, 0
+        );
+        $("runMeta").textContent = `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
+        $("runMeta").classList.remove("hidden");
+        $("downloadBtn").href = `${API}/download/${runId}` +
+            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
+        $("downloadBtn").classList.remove("hidden");
+        $("runLabel").textContent = "PROJECT FROM HISTORY";
+        $("emptyExplorer").classList.add("hidden");
+        renderTree(new Map());
+        previewCode(0);
+        setStatus(`Opened run ${runId}`);
+        $("promptInput").placeholder = "Describe the change to make to this project…";
+        restoreButton("Continue building");
+        $("newProjectBtn").classList.remove("hidden");
+
+        // Swap panels: back to the explorer with the opened project.
+        $("historyPanel").classList.add("collapsed");
+        $("actHistory").classList.remove("active");
+        $("sidePanel").classList.remove("collapsed");
+        $("actExplorer").classList.add("active");
+        syncScrim();
+    } catch (e) {
+        console.error(e);
+    }
+}
 
 /* ---------- Tabs ---------- */
 function showWelcome() {

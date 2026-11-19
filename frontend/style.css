@@ -425,6 +425,57 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 }
 .mermaid-wrap svg { max-width: 100%; height: auto; }
 
+/* ---- Run history panel (second side panel on the same rail) ---- */
+/* Collapsed history hides instead of sliding, so it never covers the
+   explorer's collapse animation. */
+.history-panel.collapsed { display: none; margin-left: 0; }
+.run-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.run-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+}
+.run-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+}
+.run-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.run-dot.ok { background: #30d158; }
+.run-dot.bad { background: #ff453a; }
+.run-dot.mid { background: #ffd60a; }
+.run-prompt {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.run-meta-line {
+    margin-top: 4px;
+    font-size: 10.5px;
+    color: var(--muted);
+}
+.run-actions { margin-top: 6px; }
+
 @media (max-width: 980px) {
     .diff-head { padding: 6px 8px 0; }
     .diff-table td { padding: 0 8px; font-size: 11px; }
