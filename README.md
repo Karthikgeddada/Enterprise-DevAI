@@ -52,7 +52,7 @@ Dual pipeline engines: the default custom engine or a LangGraph StateGraph (`PIP
 
 | Provider | Requires | Notes |
 |---|---|---|
-| Google Gemini | API key | Default (`gemini-flash-lite-latest`) |
+| Google Gemini | API key | Default (`gemini-3.5-flash-lite`) |
 | OpenRouter | API key | OpenAI-compatible |
 | Groq | API key | OpenAI-compatible |
 | DeepSeek | API key | OpenAI-compatible |
@@ -65,12 +65,21 @@ cd backend
 python -m pytest -v
 ```
 
-142 tests covering the dual engine parity, provider adapters and errors, retry policy, API guard, run persistence, diff/patch integrity, path security, static validation, task states, and integration.
+163 tests covering the dual engine parity, provider adapters and errors, retry policy, API guard, run persistence and history, GitHub export, diff/patch integrity, path security, static validation, task states, and integration.
 
 ## Deployment
 
 * **Backend (Render):** `render.yaml` blueprint — builds from `backend/`, runs `uvicorn app.main:app`. Set `GEMINI_API_KEY` (and optionally `PIPELINE_ENGINE`, `API_KEY`, `ALLOWED_ORIGIN`) in the dashboard.
 * **Frontend (Vercel):** serves `frontend/` per `vercel.json`. The FastAPI backend also serves the same frontend at `/`, so one Render deploy alone is a working demo.
+* **Docker (self-host, one command):**
+
+```bash
+docker build -t devteam-ai .
+docker run -p 8000:8000 -e GEMINI_API_KEY=your_key -v devteam-data:/data devteam-ai
+# open http://localhost:8000
+```
+
+One image carries the API and the IDE frontend. The SQLite run history lands on the `/data` volume, so it survives container restarts — unlike free PaaS disks, which wipe on every redeploy. Set `API_KEY`, `ALLOWED_ORIGIN`, `PIPELINE_ENGINE`, or `GITHUB_TOKEN` with extra `-e` flags as needed.
 
 ## Documentation
 
