@@ -56,6 +56,7 @@
             <div class="tabbar">
                 <button class="tab active" id="welcomeTab">Welcome</button>
                 <button class="tab hidden" id="codeTab">file</button>
+                <button class="tab hidden" id="diffTab">Diff</button>  <!-- shown for changed files in continue mode -->
             </div>
 
             <section class="view welcome-view" id="welcomeView">
@@ -88,6 +89,10 @@
 
             <section class="view code-view hidden" id="codeView">
                 <pre class="code-wrap"><code id="codeViewer">Select a file to preview</code></pre>
+            </section>
+            <section class="view diff-view hidden" id="diffView">
+                <div class="diff-head"><span>before</span><span>after</span></div>
+                <div class="diff-scroll" id="diffScroll"></div>
             </section>
         </main>
 
@@ -131,6 +136,7 @@ Describe a project to begin.</div>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/diff@8.0.1/dist/diff.min.js"></script>
     <script src="config.js"></script>
     <script src="app.js"></script>
 </body>

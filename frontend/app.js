@@ -9,6 +9,10 @@ let pendingIsContinue = false;
 let pollInterval = null;
 let allGeneratedFiles = [];
 let activeIndex = -1;
+// Continue-mode diffing: snapshot of the project files before the last
+// update, plus per-path change tags ("new"/"mod") for badges and the diff view.
+let previousFilesSnapshot = [];
+let fileChangeMap = new Map();
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,17 +79,30 @@ window.addEventListener("resize", syncScrim);
 function showWelcome() {
     $("welcomeTab").classList.add("active");
     $("codeTab").classList.remove("active");
+    $("diffTab").classList.remove("active");
     $("welcomeView").classList.remove("hidden");
     $("codeView").classList.add("hidden");
+    $("diffView").classList.add("hidden");
 }
 function showCode() {
     $("welcomeTab").classList.remove("active");
     $("codeTab").classList.add("active");
+    $("diffTab").classList.remove("active");
     $("welcomeView").classList.add("hidden");
     $("codeView").classList.remove("hidden");
+    $("diffView").classList.add("hidden");
+}
+function showDiff() {
+    $("welcomeTab").classList.remove("active");
+    $("codeTab").classList.remove("active");
+    $("diffTab").classList.add("active");
+    $("welcomeView").classList.add("hidden");
+    $("codeView").classList.add("hidden");
+    $("diffView").classList.remove("hidden");
 }
 $("welcomeTab").addEventListener("click", showWelcome);
 $("codeTab").addEventListener("click", () => { if (activeIndex >= 0) showCode(); });
+$("diffTab").addEventListener("click", () => { if (activeIndex >= 0) showDiff(); });
 
 /* ---------- Errors & status bar ---------- */
 function showError(msg) {
@@ -316,6 +333,9 @@ async function fetchFiles() {
                 else if (prevMap.get(f.path) !== f.content) changeMap.set(f.path, "mod");
             });
         }
+        // Keep the before/after comparison data for the diff view.
+        previousFilesSnapshot = previousFiles.slice();
+        fileChangeMap = changeMap;
         pendingIsContinue = false;
 
         const lineCount = allGeneratedFiles.reduce(
@@ -439,7 +459,18 @@ function previewCode(index) {
 
     $("codeTab").textContent = file.path.split("/").pop();
     $("codeTab").classList.remove("hidden");
-    showCode();
+
+    // Files modified by a continue-run open in side-by-side diff view;
+    // everything else opens as plain code. The code tab still shows the
+    // full file content when clicked.
+    const hasDiff = fileChangeMap.get(file.path) === "mod" && window.Diff;
+    $("diffTab").classList.toggle("hidden", !hasDiff);
+    if (hasDiff) {
+        renderDiffView(file);
+        showDiff();
+    } else {
+        showCode();
+    }
 
     // On phones the explorer is an overlay: close it so the code is visible.
     if (isNarrow() && !$("sidePanel").classList.contains("collapsed")) closeOverlays();
@@ -453,5 +484,68 @@ function previewCode(index) {
     if (window.hljs) {
         try { hljs.highlightElement(viewer); } catch (e) { /* non-fatal */ }
     }
+}
+
+/* ---------- Side-by-side diff view (jsdiff, continue mode) ---------- */
+function renderDiffView(file) {
+    const prev = previousFilesSnapshot.find((f) => f.path === file.path);
+    const body = $("diffScroll");
+    body.innerHTML = "";
+
+    const splitLines = (s) => {
+        const lines = String(s || "").split("\n");
+        if (lines.length && lines[lines.length - 1] === "") lines.pop();
+        return lines;
+    };
+    const row = (l, r, cls) => {
+        const tr = document.createElement("tr");
+        const tdL = document.createElement("td");
+        const tdR = document.createElement("td");
+        tdL.textContent = l;
+        tdR.textContent = r;
+        if (cls) { tdL.className = cls; tdR.className = cls; }
+        tr.appendChild(tdL);
+        tr.appendChild(tdR);
+        return tr;
+    };
+
+    const tbody = document.createElement("tbody");
+    const parts = window.Diff.diffLines(prev ? prev.content : "", file.content);
+    for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (!p.added && !p.removed) {
+            splitLines(p.value).forEach((line) =>
+                tbody.appendChild(row(line, line, ""))
+            );
+        } else {
+            // One change block: gather consecutive removed/added parts.
+            const removed = [];
+            const added = [];
+            while (i < parts.length && (parts[i].removed || parts[i].added)) {
+                (parts[i].removed ? removed : added).push(...splitLines(parts[i].value));
+                i++;
+            }
+            i--;
+            const n = Math.max(removed.length, added.length);
+            for (let k = 0; k < n; k++) {
+                const tr = document.createElement("tr");
+                const tdL = document.createElement("td");
+                const tdR = document.createElement("td");
+                tdL.textContent = removed[k] != null ? removed[k] : "";
+                tdR.textContent = added[k] != null ? added[k] : "";
+                tdL.className = removed[k] != null ? "diff-del" : "diff-gap";
+                tdR.className = added[k] != null ? "diff-add" : "diff-gap";
+                tr.appendChild(tdL);
+                tr.appendChild(tdR);
+                tbody.appendChild(tr);
+            }
+        }
+    }
+
+    const table = document.createElement("table");
+    table.className = "diff-table";
+    table.appendChild(tbody);
+    body.appendChild(table);
+    body.scrollTop = 0;
 }
 
