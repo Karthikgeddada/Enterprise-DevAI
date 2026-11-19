@@ -191,13 +191,61 @@ $("generateBtn").addEventListener("click", async () => {
         }
         const data = await res.json();
         currentRunId = data.run_id;
-        pollInterval = setInterval(pollStatus, 2000);
+        // Prefer live SSE updates; 2s polling stays as automatic fallback.
+        if (!startStream(currentRunId)) {
+            pollInterval = setInterval(pollStatus, 2000);
+        }
     } catch (err) {
         showError(err.message || "Could not reach the server. If it was asleep, give it a moment and try again.");
         restoreButton();
         setStatus("Ready");
     }
 });
+
+function startStream(runId) {
+    // Live updates over Server-Sent Events. Returns false when unavailable,
+    // in which case the caller falls back to 2s polling.
+    if (!window.EventSource) return false;
+    try {
+        const es = new EventSource(`${API}/stream/${runId}`);
+        es.onmessage = (ev) => {
+            try { handleProgress(JSON.parse(ev.data)); } catch (e) { console.error(e); }
+        };
+        es.onerror = () => {
+            // Connection lost or server restarted — fall back to polling.
+            es.close();
+            if (currentRunId === runId && !pollInterval) {
+                pollInterval = setInterval(pollStatus, 2000);
+            }
+        };
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function handleProgress(data) {
+    updateLogs(data.logs);
+    updateTracker(data.status);
+    if (data.status === "completed" || data.status === "failed") {
+        finishRun(data);
+    }
+}
+
+function finishRun(data) {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    if (data.status === "completed") {
+        fetchFiles();
+    } else {
+        restoreButton();
+        setStatus("Failed");
+        const last = (data.logs || []).slice(-1)[0] || "Generation failed.";
+        showError(last.replace(/^FAILED:\s*/, ""));
+    }
+}
 
 async function pollStatus() {
     if (!currentRunId) return;
@@ -210,15 +258,7 @@ async function pollStatus() {
         updateTracker(data.status);
 
         if (data.status === "completed" || data.status === "failed") {
-            clearInterval(pollInterval);
-            if (data.status === "completed") {
-                fetchFiles();
-            } else {
-                restoreButton();
-                setStatus("Failed");
-                const last = (data.logs || []).slice(-1)[0] || "Generation failed.";
-                showError(last.replace(/^FAILED:\s*/, ""));
-            }
+            finishRun(data);
         }
     } catch (e) {
         console.error(e);

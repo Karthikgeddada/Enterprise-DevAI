@@ -1,7 +1,10 @@
+import asyncio
+import json
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import os
 from services.generation_service import start_generation, get_status, get_files
@@ -30,6 +33,43 @@ async def get_project_status(run_id: str):
         "status": state["status"],
         "logs": state["logs"]
     }
+
+@router.get("/stream/{run_id}")
+async def stream_run(run_id: str):
+    """Server-Sent Events feed of a run's live status and logs.
+
+    Emits one event whenever status or logs change, then closes on a terminal
+    status. Read-only like /status, so it stays open (scoped by unguessable
+    run ids). The frontend keeps 2s polling as automatic fallback.
+    """
+    if not get_status(run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_stream():
+        last: Optional[str] = None
+        idle = 0
+        while True:
+            state = get_status(run_id)
+            if state is None:
+                return
+            payload = json.dumps({"status": state["status"], "logs": state["logs"]})
+            if payload != last:
+                last = payload
+                idle = 0
+                yield f"data: {payload}\n\n"
+                if state["status"] in ("completed", "failed"):
+                    return
+            else:
+                idle += 1
+                if idle % 15 == 0:
+                    yield ": ping\n\n"  # keep proxies from closing an idle line
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @router.get("/files/{run_id}")
 async def get_project_files(run_id: str):
