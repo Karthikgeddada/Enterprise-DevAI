@@ -104,6 +104,47 @@ def test_models_endpoint(client):
     assert body["choices"][0]["id"] == "auto"
 
 
+def test_templates_endpoint(client):
+    """Template gallery: read-only list of one-click prompts."""
+    r = client.get("/templates")
+    assert r.status_code == 200
+    templates = r.json()["templates"]
+    assert len(templates) >= 3
+    for t in templates:
+        assert {"id", "name", "icon", "prompt"} <= set(t)
+        assert t["prompt"].strip()
+
+
+def test_download_vscode_format(client, monkeypatch):
+    """format=vscode: a ZIP of the run's files plus workspace metadata."""
+    import io
+    import zipfile
+
+    monkeypatch.setenv("API_KEY", "test-key")  # endpoint requires a key; pin it
+    files = [
+        {"path": "app.py", "content": "print('hi')\n"},
+        {"path": "static/index.html", "content": "<h1>hi</h1>"},
+    ]
+    monkeypatch.setattr(api, "get_files", lambda rid: files if rid == "r1" else None)
+
+    r = client.get("/download/r1", params={"format": "vscode"}, headers={"X-API-Key": "test-key"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = set(zf.namelist())
+    assert {"app.py", "static/index.html", "devteam_project.code-workspace", ".vscode/settings.json"} <= names
+    import json as _json
+    ws = _json.loads(zf.read("devteam_project.code-workspace"))
+    assert ws["folders"] == [{"path": "."}]
+
+
+def test_download_vscode_404_without_files(client, monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setattr(api, "get_files", lambda rid: None)
+    r = client.get("/download/missing", params={"format": "vscode"}, headers={"X-API-Key": "test-key"})
+    assert r.status_code == 404
+
+
 def test_generate_rejects_unknown_provider(client):
     r = client.post("/generate", json={"prompt": "x", "provider": "nope"})
     assert r.status_code == 400

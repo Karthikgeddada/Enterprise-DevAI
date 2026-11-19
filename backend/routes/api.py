@@ -1,16 +1,19 @@
 import asyncio
+import io
 import json
 import os
+import zipfile
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 import os
 from services.generation_service import start_generation, get_status, get_files, get_run
 from services.github_export import push_project_to_github
 from services.scorecard import compute_scorecard
 from services.observability import compute_stats
+from services.templates import get_templates
 from services import run_store
 from services.guard import rate_limit, require_api_key
 
@@ -120,11 +123,71 @@ async def get_project_files(run_id: str):
     return {"files": files}
 
 @router.get("/download/{run_id}", dependencies=[Depends(require_api_key)])
-async def download_project(run_id: str):
+async def download_project(run_id: str, format: Optional[str] = None):
+    """Download the generated project.
+
+    format=vscode: an in-memory ZIP of the run's files plus VS Code
+    workspace metadata (<name>.code-workspace and .vscode/settings.json)
+    so the project opens ready-to-code. Default: the pipeline's ZIP.
+    """
+    if format == "vscode":
+        files = get_files(run_id)
+        if not files:
+            raise HTTPException(status_code=404, detail="Run not found or has no files")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in files:
+                zf.writestr(f.get("path", "unnamed.txt"), f.get("content", ""))
+            zf.writestr(
+                "devteam_project.code-workspace",
+                json.dumps(
+                    {
+                        "folders": [{"path": "."}],
+                        "settings": {
+                            "editor.formatOnSave": True,
+                            "editor.tabSize": 4,
+                            "files.exclude": {"**/__pycache__": True},
+                        },
+                        "extensions": {
+                            "recommendations": [
+                                "ms-python.python",
+                                "ms-python.vscode-pylance",
+                            ]
+                        },
+                    },
+                    indent=2,
+                ),
+            )
+            zf.writestr(
+                ".vscode/settings.json",
+                json.dumps(
+                    {
+                        "python.testing.pytestEnabled": True,
+                        "python.testing.autoTestDiscoverOnSaveEnabled": True,
+                        "editor.rulers": [100],
+                    },
+                    indent=2,
+                ),
+            )
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="devteam_project_{run_id}_vscode.zip"'
+            },
+        )
+
     zip_path = f"generated_projects/{run_id}.zip"
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="ZIP not found or generation incomplete")
     return FileResponse(zip_path, media_type="application/zip", filename=f"devteam_project_{run_id}.zip")
+
+
+@router.get("/templates")
+async def list_templates():
+    """One-click prompt templates for the gallery under the prompt box.
+    Read-only like /models."""
+    return {"templates": get_templates()}
 
 @router.get("/preview/{run_id}")
 async def preview_code(run_id: str):

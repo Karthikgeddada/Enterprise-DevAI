@@ -637,3 +637,19 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
     .diff-head { padding: 6px 8px 0; }
     .diff-table td { padding: 0 8px; font-size: 11px; }
 }
+
+/* Template gallery: one-click prompt chips above the prompt box */
+.template-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.template-bar .template-chip {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+}
+@media (max-width: 980px) {
+    .template-bar .template-chip { padding: 3px 8px; font-size: 11px; }
+}

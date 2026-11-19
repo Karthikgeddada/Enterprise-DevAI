@@ -184,9 +184,7 @@ async function openHistoryRun(runId) {
         );
         $("runMeta").textContent = `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
         $("runMeta").classList.remove("hidden");
-        $("downloadBtn").href = `${API}/download/${runId}` +
-            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
-        $("downloadBtn").classList.remove("hidden");
+        setDownloadButtons(runId); // ZIP + VS Code workspace exports
         $("shareBtn").classList.remove("hidden"); // a history run can be shared too
         $("pushBtn").classList.remove("hidden"); // ...and pushed to GitHub
         $("runLabel").textContent = "PROJECT FROM HISTORY";
@@ -320,6 +318,7 @@ function resetUI(isContinue) {
     $("emptyExplorer").classList.remove("hidden");
     $("runMeta").classList.add("hidden");
     $("downloadBtn").classList.add("hidden");
+    $("downloadWsBtn").classList.add("hidden");
     showWelcome();
 }
 function restoreButton(label) {
@@ -497,9 +496,7 @@ async function fetchFiles() {
             ? `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines · ${changedCount} changed`
             : `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
         $("runMeta").classList.remove("hidden");
-        $("downloadBtn").href = `${API}/download/${currentRunId}` +
-            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
-        $("downloadBtn").classList.remove("hidden");
+        setDownloadButtons(currentRunId); // ZIP + VS Code workspace exports
         $("shareBtn").classList.remove("hidden");
         $("pushBtn").classList.remove("hidden");
         $("runLabel").textContent = "GENERATED PROJECT"; // fresh build: exportable too
@@ -762,9 +759,7 @@ async function loadSharedRun() {
         );
         $("runMeta").textContent = `${allGeneratedFiles.length} files · ${lineCount.toLocaleString()} lines`;
         $("runMeta").classList.remove("hidden");
-        $("downloadBtn").href = `${API}/download/${rid}` +
-            (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
-        $("downloadBtn").classList.remove("hidden");
+        setDownloadButtons(rid); // ZIP + VS Code workspace exports
         $("runLabel").textContent = "SHARED RUN (READ-ONLY)";
         $("emptyExplorer").classList.add("hidden");
         renderTree(new Map());
@@ -908,6 +903,16 @@ function renderScorecard(data) {
     }
 }
 
+/* ---------- Download buttons (ZIP + VS Code workspace) ---------- */
+function setDownloadButtons(runId) {
+    const q = window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "";
+    $("downloadBtn").href = `${API}/download/${runId}` + q;
+    $("downloadWsBtn").href = `${API}/download/${runId}?format=vscode` +
+        (window.API_KEY ? `&api_key=${encodeURIComponent(window.API_KEY)}` : "");
+    $("downloadBtn").classList.remove("hidden");
+    $("downloadWsBtn").classList.remove("hidden");
+}
+
 /* ---------- Model selector (GET /models, per-run provider choice) ---------- */
 async function initModelSelect() {
     const sel = $("modelSelect");
@@ -937,6 +942,34 @@ async function initModelSelect() {
     }
 }
 initModelSelect();
+
+/* ---------- Template gallery (GET /templates, one-click prompts) ---------- */
+async function initTemplates() {
+    const bar = $("templateBar");
+    try {
+        const res = await fetch(`${API}/templates`);
+        const data = await res.json();
+        const templates = data.templates || [];
+        if (!templates.length) return; // nothing to show
+
+        for (const t of templates) {
+            const chip = document.createElement("button");
+            chip.className = "chip template-chip";
+            chip.type = "button";
+            chip.textContent = `${t.icon} ${t.name}`;
+            chip.title = t.prompt;
+            chip.addEventListener("click", () => {
+                $("promptInput").value = t.prompt;
+                $("promptInput").focus();
+            });
+            bar.appendChild(chip);
+        }
+        bar.classList.remove("hidden");
+    } catch (e) {
+        /* gallery stays hidden — templates are a convenience, not a path */
+    }
+}
+initTemplates();
 
 /* ---------- Platform stats (GET /stats) ---------- */
 async function openStatsModal() {
