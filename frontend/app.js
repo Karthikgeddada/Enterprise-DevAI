@@ -190,6 +190,7 @@ async function openHistoryRun(runId) {
         $("shareBtn").classList.remove("hidden"); // a history run can be shared too
         $("pushBtn").classList.remove("hidden"); // ...and pushed to GitHub
         $("runLabel").textContent = "PROJECT FROM HISTORY";
+        loadScorecard(runId); // stats available via the tab, code view stays up
         $("emptyExplorer").classList.add("hidden");
         renderTree(new Map());
         previewCode(0);
@@ -210,33 +211,38 @@ async function openHistoryRun(runId) {
 }
 
 /* ---------- Tabs ---------- */
+function _deactivateAllTabs() {
+    for (const t of ["welcomeTab", "codeTab", "diffTab", "scorecardTab"]) {
+        $(t).classList.remove("active");
+    }
+    for (const v of ["welcomeView", "codeView", "diffView", "scorecardView"]) {
+        $(v).classList.add("hidden");
+    }
+}
 function showWelcome() {
+    _deactivateAllTabs();
     $("welcomeTab").classList.add("active");
-    $("codeTab").classList.remove("active");
-    $("diffTab").classList.remove("active");
     $("welcomeView").classList.remove("hidden");
-    $("codeView").classList.add("hidden");
-    $("diffView").classList.add("hidden");
 }
 function showCode() {
-    $("welcomeTab").classList.remove("active");
+    _deactivateAllTabs();
     $("codeTab").classList.add("active");
-    $("diffTab").classList.remove("active");
-    $("welcomeView").classList.add("hidden");
     $("codeView").classList.remove("hidden");
-    $("diffView").classList.add("hidden");
 }
 function showDiff() {
-    $("welcomeTab").classList.remove("active");
-    $("codeTab").classList.remove("active");
+    _deactivateAllTabs();
     $("diffTab").classList.add("active");
-    $("welcomeView").classList.add("hidden");
-    $("codeView").classList.add("hidden");
     $("diffView").classList.remove("hidden");
+}
+function showScorecard() {
+    _deactivateAllTabs();
+    $("scorecardTab").classList.add("active");
+    $("scorecardView").classList.remove("hidden");
 }
 $("welcomeTab").addEventListener("click", showWelcome);
 $("codeTab").addEventListener("click", () => { if (activeIndex >= 0) showCode(); });
 $("diffTab").addEventListener("click", () => { if (activeIndex >= 0) showDiff(); });
+$("scorecardTab").addEventListener("click", showScorecard);
 
 /* ---------- Errors & status bar ---------- */
 function showError(msg) {
@@ -292,6 +298,7 @@ function resetUI(isContinue) {
     clearError();
     $("shareBtn").classList.add("hidden");
     $("pushBtn").classList.add("hidden");
+    $("scorecardTab").classList.add("hidden"); // no current run = no scorecard
     document.querySelectorAll("#stepsList li").forEach((li) => (li.className = ""));
     $("logsTerminal").textContent = isContinue
         ? "Applying your change…"
@@ -494,6 +501,7 @@ async function fetchFiles() {
         $("shareBtn").classList.remove("hidden");
         $("pushBtn").classList.remove("hidden");
         $("runLabel").textContent = "GENERATED PROJECT"; // fresh build: exportable too
+        loadScorecard(currentRunId, { focus: true }); // the wow moment: build summary
         $("emptyExplorer").classList.add("hidden");
 
         renderTree(changeMap);
@@ -771,12 +779,132 @@ async function loadSharedRun() {
         $("newProjectBtn").classList.remove("hidden");
         setStatus(`Viewing shared run ${rid}`);
         document.title = "DevTeam AI — shared run";
+        loadScorecard(rid, { focus: true }); // reviewers land on the build summary
     } catch (e) {
         console.error(e);
         setStatus("Could not load the shared run");
     }
 }
 loadSharedRun();
+
+/* ---------- Scorecard (GET /scorecard/<id>) ---------- */
+function fmtDuration(sec) {
+    if (sec == null) return "—";
+    if (sec < 60) return `${Math.round(sec)}s`;
+    return `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s`;
+}
+
+async function loadScorecard(runId, opts) {
+    if (!runId) return;
+    const focus = !!(opts && opts.focus);
+    try {
+        const res = await fetch(`${API}/scorecard/${runId}`);
+        if (!res.ok) {
+            $("scorecardTab").classList.add("hidden");
+            return;
+        }
+        renderScorecard(await res.json());
+        $("scorecardTab").classList.remove("hidden");
+        if (focus) showScorecard();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function renderScorecard(data) {
+    const root = $("scoreScroll");
+    root.innerHTML = "";
+
+    const head = document.createElement("div");
+    head.className = "score-head";
+    const title = document.createElement("h2");
+    title.textContent = (data.prompt || "untitled").slice(0, 100);
+    const sub = document.createElement("p");
+    sub.className = "dim";
+    sub.textContent = `run ${data.run_id} · ${data.status} · built in ${fmtDuration(data.duration_seconds)}`;
+    head.appendChild(title);
+    head.appendChild(sub);
+    root.appendChild(head);
+
+    const tiles = document.createElement("div");
+    tiles.className = "score-tiles";
+    const stats = [
+        [`${data.file_count}`, "files"],
+        [`${data.total_lines.toLocaleString()}`, "lines of code"],
+        [`${fmtDuration(data.duration_seconds)}`, "build time"],
+        [`${data.self_heals}`, "self-heals"],
+    ];
+    for (const [value, label] of stats) {
+        const tile = document.createElement("div");
+        tile.className = "score-tile";
+        const v = document.createElement("strong");
+        v.textContent = value;
+        const l = document.createElement("span");
+        l.textContent = label;
+        tile.appendChild(v);
+        tile.appendChild(l);
+        tiles.appendChild(tile);
+    }
+    root.appendChild(tiles);
+
+    if (data.largest_file) {
+        const big = document.createElement("p");
+        big.className = "score-big dim";
+        big.textContent = `largest file: ${data.largest_file.path} (${data.largest_file.lines} lines)`;
+        root.appendChild(big);
+    }
+
+    const checkList = document.createElement("ul");
+    checkList.className = "score-checks";
+    const checkLabels = {
+        readme: "README",
+        architecture_doc: "Architecture doc",
+        architecture_diagram: "Architecture diagram",
+        tests: "Test suite",
+    };
+    for (const key of Object.keys(checkLabels)) {
+        const li = document.createElement("li");
+        const mark = document.createElement("span");
+        const pass = !!(data.quality_checks && data.quality_checks[key]);
+        mark.className = pass ? "check ok" : "check no";
+        mark.textContent = pass ? "✓" : "—";
+        li.appendChild(mark);
+        li.appendChild(document.createTextNode(checkLabels[key]));
+        checkList.appendChild(li);
+    }
+    root.appendChild(checkList);
+
+    const langs = Object.entries(data.languages || {});
+    if (langs.length) {
+        const wrap = document.createElement("div");
+        wrap.className = "score-langs";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Languages";
+        wrap.appendChild(h3);
+        const maxLines = Math.max(...langs.map(([, v]) => v.lines), 1);
+        for (const [ext, v] of langs) {
+            const row = document.createElement("div");
+            row.className = "lang-row";
+            const name = document.createElement("span");
+            name.className = "lang-name";
+            name.textContent = `.${ext}`;
+            const bar = document.createElement("div");
+            bar.className = "lang-bar-track";
+            const fill = document.createElement("div");
+            fill.className = "lang-bar";
+            fill.style.width = `${Math.max((v.lines / maxLines) * 100, 3)}%`;
+            bar.appendChild(fill);
+            const count = document.createElement("span");
+            count.className = "lang-count";
+            count.textContent = `${v.files}f · ${v.lines.toLocaleString()} lines`;
+            row.appendChild(name);
+            row.appendChild(bar);
+            row.appendChild(count);
+            wrap.appendChild(row);
+        }
+        root.appendChild(wrap);
+    }
+}
 
 /* ---------- Push to GitHub (user's PAT, POST /export/github) ---------- */
 let ghDone = false;

@@ -480,6 +480,94 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 .foot-actions { display: flex; gap: 8px; }
 .foot-actions .btn-ghost { flex: 1; text-align: center; }
 
+/* ---- Scorecard (build summary tab) ---- */
+.score-scroll {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 36px 28px 60px;
+    overflow-y: auto;
+}
+.score-head h2 { margin: 0 0 6px; font-size: 22px; }
+.score-head p { margin: 0; font-size: 12px; }
+.score-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 26px;
+}
+.score-tile {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 14px;
+    text-align: center;
+    background: var(--panel);
+}
+.score-tile strong {
+    display: block;
+    font-size: 26px;
+    font-weight: 600;
+}
+.score-tile span {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.score-big { margin-top: 16px; font-size: 12px; }
+.score-checks {
+    list-style: none;
+    margin: 22px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+.score-checks li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.check { font-size: 13px; width: 18px; }
+.check.ok { color: #30d158; }
+.check.no { color: var(--muted); }
+.score-langs { margin-top: 30px; }
+.score-langs h3 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.lang-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+.lang-name {
+    width: 64px;
+    flex: 0 0 auto;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    color: var(--muted);
+}
+.lang-bar-track {
+    flex: 1;
+    height: 10px;
+    border-radius: 6px;
+    background: var(--panel);
+    overflow: hidden;
+}
+.lang-bar {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--accent), #64d2ff);
+}
+.lang-count { flex: 0 0 auto; color: var(--muted); }
+
 /* ---- GitHub push modal ---- */
 .modal-scrim {
     position: fixed;

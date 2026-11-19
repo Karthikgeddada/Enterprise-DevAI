@@ -49,6 +49,13 @@ def _connect() -> sqlite3.Connection:
                updated_at REAL NOT NULL
            )"""
     )
+    # Lightweight migration for the timing columns (added for scorecards):
+    # older DBs simply lack them; "duplicate column name" is ignored.
+    for col in ("started_at", "completed_at"):
+        try:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     return conn
 
 
@@ -64,6 +71,8 @@ def save(
     logs: List[Any],
     files: List[Dict[str, Any]],
     prompt: str = "",
+    started_at: Optional[float] = None,
+    completed_at: Optional[float] = None,
 ) -> None:
     """Upsert a run snapshot. Never raises."""
     if _broken:
@@ -73,14 +82,17 @@ def save(
             conn = _connect()
             try:
                 conn.execute(
-                    """INSERT INTO runs (run_id, status, logs, files, prompt, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?)
+                    """INSERT INTO runs (run_id, status, logs, files, prompt, updated_at,
+                                          started_at, completed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(run_id) DO UPDATE SET
                            status = excluded.status,
                            logs = excluded.logs,
                            files = excluded.files,
                            prompt = excluded.prompt,
-                           updated_at = excluded.updated_at""",
+                           updated_at = excluded.updated_at,
+                           started_at = excluded.started_at,
+                           completed_at = excluded.completed_at""",
                     (
                         run_id,
                         status,
@@ -88,6 +100,8 @@ def save(
                         json.dumps(files),
                         prompt,
                         time.time(),
+                        started_at,
+                        completed_at,
                     ),
                 )
                 conn.commit()
@@ -106,7 +120,8 @@ def load(run_id: str) -> Optional[Dict[str, Any]]:
             conn = _connect()
             try:
                 row = conn.execute(
-                    "SELECT status, logs, files, prompt FROM runs WHERE run_id = ?",
+                    """SELECT status, logs, files, prompt, started_at, completed_at
+                       FROM runs WHERE run_id = ?""",
                     (run_id,),
                 ).fetchone()
             finally:
@@ -118,6 +133,8 @@ def load(run_id: str) -> Optional[Dict[str, Any]]:
             "logs": json.loads(row[1]),
             "files": json.loads(row[2]),
             "prompt": row[3],
+            "started_at": row[4],
+            "completed_at": row[5],
         }
     except Exception as e:  # noqa: BLE001
         _fail(e)

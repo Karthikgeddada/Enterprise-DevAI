@@ -10,6 +10,7 @@ Statuses emitted (must match frontend/app.js):
 """
 import asyncio
 import os
+import time
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -38,6 +39,8 @@ def _persist(run_id: str) -> None:
         run_store.save(
             run_id, run["status"], run["logs"], run.get("files", []),
             run.get("prompt", ""),
+            started_at=run.get("started_at"),
+            completed_at=run.get("completed_at"),
         )
 
 
@@ -61,11 +64,14 @@ def _load(run_id: str) -> Optional[Dict[str, Any]]:
         logs.append("Server restarted mid-run; this run can no longer finish. Please generate again.")
     # Prompt travels with the run so the history dashboard can show it and
     # continue-mode keeps working after a restart rehydrates from SQLite.
+    # Timing columns feed the scorecard (duration).
     run = {
         "status": status,
         "logs": logs,
         "files": data.get("files", []),
         "prompt": data.get("prompt", ""),
+        "started_at": data.get("started_at"),
+        "completed_at": data.get("completed_at"),
     }
     _runs[run_id] = run
     return run
@@ -164,6 +170,7 @@ async def _run_pipeline(run_id: str, prompt: str, base_files: Optional[List[Dict
                 )
                 run["files"] = final.get("final_files", [])
                 run["status"] = "completed"
+                run["completed_at"] = time.time()  # scorecard duration
                 log("Done. Project packaged as ZIP.")
             except Exception as e:  # same failure contract as the custom engine
                 run["status"] = "failed"
@@ -252,6 +259,7 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
 
         run["files"] = _dedupe_files(arch_files + code_files + test_files + docs_files)
         run["status"] = "completed"
+        run["completed_at"] = time.time()  # scorecard duration (custom engine)
         log("Done. Project packaged as ZIP.")
     except Exception as e:  # surface every failure to the UI, never crash the app
         run["status"] = "failed"
@@ -285,11 +293,24 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None) -> st
         "logs": ["Run started."],
         "files": [],
         "prompt": prompt.strip(),
+        "started_at": time.time(),  # scorecard duration
     }
     _persist(run_id)
     asyncio.create_task(_run_pipeline(run_id, prompt.strip(), base_files))
     return run_id
 
+
+def get_run(run_id: str) -> Optional[Dict[str, Any]]:
+    """Full run dict (live or rehydrated), with run_id attached.
+
+    Used by the scorecard; exposes exactly the stored state, no more.
+    """
+    run = _load(run_id)
+    if run is None:
+        return None
+    run = dict(run)
+    run["run_id"] = run_id
+    return run
 
 def get_status(run_id: str) -> Optional[Dict[str, Any]]:
     run = _load(run_id)

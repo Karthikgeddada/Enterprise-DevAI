@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import os
-from services.generation_service import start_generation, get_status, get_files
+from services.generation_service import start_generation, get_status, get_files, get_run
 from services.github_export import push_project_to_github
+from services.scorecard import compute_scorecard
 from services import run_store
 from services.guard import rate_limit, require_api_key
 
@@ -85,6 +86,15 @@ async def list_runs():
     Read-only like /status, so it stays open in the public demo.
     """
     return {"runs": run_store.list_runs(50)}
+
+@router.get("/scorecard/{run_id}")
+async def get_scorecard(run_id: str):
+    """Build statistics for a run: files, lines, languages, quality checks,
+    self-heal count and duration. Read-only like /files."""
+    run = get_run(run_id)
+    if run is None or not run.get("files"):
+        raise HTTPException(status_code=404, detail="Run not found or has no files")
+    return compute_scorecard(run)
 
 @router.get("/files/{run_id}")
 async def get_project_files(run_id: str):

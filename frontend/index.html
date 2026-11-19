@@ -75,6 +75,7 @@
                 <button class="tab active" id="welcomeTab">Welcome</button>
                 <button class="tab hidden" id="codeTab">file</button>
                 <button class="tab hidden" id="diffTab">Diff</button>  <!-- shown for changed files in continue mode -->
+                <button class="tab hidden" id="scorecardTab">Scorecard</button>  <!-- build stats for a completed run -->
             </div>
 
             <section class="view welcome-view" id="welcomeView">
@@ -111,6 +112,9 @@
             <section class="view diff-view hidden" id="diffView">
                 <div class="diff-head"><span>before</span><span>after</span></div>
                 <div class="diff-scroll" id="diffScroll"></div>
+            </section>
+            <section class="view score-view hidden" id="scorecardView">
+                <div class="score-scroll" id="scoreScroll"></div>
             </section>
         </main>
 
