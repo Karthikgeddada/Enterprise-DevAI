@@ -16,7 +16,7 @@ services:
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-3.5-flash-lite  # keep current: Google retires -latest aliases
       # Optional: lock CORS to your Vercel frontend URL (default allows all)
       # - key: ALLOWED_ORIGIN
       #   value: https://your-app.vercel.app

@@ -1,4 +1,5 @@
 import os
+import re
 from typing import List, Optional, AsyncIterator
 
 from providers.base import BaseProvider, GenerationRequest, GenerationResponse, ModelInfo
@@ -10,7 +11,7 @@ class GeminiProvider(BaseProvider):
 
     DEFAULT_MODELS = [
         ModelInfo(
-            id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite (latest, cheapest)",
+            id="gemini-3.5-flash-lite", name="Gemini 3.5 Flash Lite (latest, cheapest)",
             provider="gemini", context_window=1048576,
             supports_streaming=True, supports_structured=True, max_output_tokens=8192,
             pricing_per_1m_input=0.075, pricing_per_1m_output=0.30,
@@ -60,7 +61,7 @@ class GeminiProvider(BaseProvider):
 
     def __init__(self, api_key: Optional[str] = None, default_model: Optional[str] = None):
         self._api_key = api_key or self._get_api_key()
-        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+        self._default_model = default_model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("GEMINI_API_KEY")
@@ -75,13 +76,18 @@ class GeminiProvider(BaseProvider):
         from google import genai
         return genai.Client(api_key=self._api_key)
 
+    def _recommended_model(self, err: Exception) -> Optional[str]:
+        """Google's 404s often name the replacement: '...use models/<id>...'"""
+        m = re.search(r"use models/([\w.\-]+)", str(err))
+        return m.group(1) if m else None
+
     def _discover_model(self) -> Optional[str]:
         """Pick the cheapest available Gemini flash model via ListModels.
 
         Google retires/renames model aliases over time; this keeps the app
         working when a configured id disappears (404 INVALID_MODEL).
         """
-        preferred = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash")
+        preferred = ("gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash-lite")
         try:
             client = self._get_client()
             available = [m.name.replace("models/", "") for m in client.models.list()]
@@ -140,9 +146,9 @@ class GeminiProvider(BaseProvider):
                 first = classify_error(first_err)
                 if first.category != ErrorCategory.INVALID_MODEL:
                     raise first
-                # Configured model id is gone/renamed — discover a valid one
-                # from ListModels and retry once with it.
-                used_model = self._discover_model() or self._default_model
+                # Configured model id is gone/renamed — prefer the replacement
+                # Google names in the error, else discover one from ListModels.
+                used_model = self._recommended_model(first_err) or self._discover_model() or self._default_model
                 if used_model == request.model:
                     raise first
                 response = await client.aio.models.generate_content(
