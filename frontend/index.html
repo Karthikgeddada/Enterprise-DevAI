@@ -54,6 +54,7 @@
                 <div class="foot-actions">
                     <a id="downloadBtn" class="btn-ghost hidden" href="#">Download ZIP</a>
                     <button id="shareBtn" class="btn-ghost hidden">Copy share link</button>
+                    <button id="pushBtn" class="btn-ghost hidden">Push to GitHub</button> <!-- creates a real repo with the user's PAT -->
                 </div>
             </div>
         </aside>
@@ -151,6 +152,23 @@ Describe a project to begin.</div>
         <span id="statusLeft">✦ DevTeam AI</span>
         <span class="sb-right"><span id="statusRight">Ready</span></span>
     </footer>
+
+    <div class="modal-scrim hidden" id="ghModal">
+        <div class="modal" id="ghModalCard">
+            <h3 id="ghModalTitle">Push to GitHub</h3>
+            <p class="dim" id="ghModalDesc">Creates a public repo under your GitHub account with this
+                project's files. Your token is used once and never stored.</p>
+            <label for="ghRepoName">Repo name</label>
+            <input id="ghRepoName" type="text" autocomplete="off" placeholder="devteam-ai-project">
+            <label for="ghToken">Personal access token</label>
+            <input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_… or ghp_…">
+            <p class="dim hint-xs">Classic token with "repo" scope, or fine-grained with "Contents: write".</p>
+            <div class="modal-actions">
+                <button id="ghCancel" class="btn-ghost">Cancel</button>
+                <button id="ghPush" class="btn-primary">Push</button>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/diff@8.0.1/dist/diff.min.js"></script>

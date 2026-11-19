@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import os
 from services.generation_service import start_generation, get_status, get_files
+from services.github_export import push_project_to_github
 from services import run_store
 from services.guard import rate_limit, require_api_key
 
@@ -16,6 +17,11 @@ router = APIRouter()
 class PromptRequest(BaseModel):
     prompt: str
     base_run_id: Optional[str] = None  # set to continue developing an existing project
+
+class GithubExportRequest(BaseModel):
+    run_id: str
+    repo_name: Optional[str] = None
+    token: Optional[str] = None  # falls back to the GITHUB_TOKEN env var
 
 @router.post("/generate", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 async def generate_project(req: PromptRequest):
@@ -105,3 +111,37 @@ async def preview_code(run_id: str):
 @router.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+@router.post("/export/github", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+async def export_to_github(req: GithubExportRequest):
+    """Create a real GitHub repo from a finished run (user's PAT).
+
+    The token is used for this single request and never stored. PyGithub
+    is blocking, so the push runs in a worker thread.
+    """
+    files = get_files(req.run_id)
+    if not files:
+        raise HTTPException(status_code=404, detail="Run not found or has no files")
+
+    token = (req.token or os.getenv("GITHUB_TOKEN") or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="A GitHub personal access token is required (classic token with 'repo' scope, or fine-grained with Contents: write).",
+        )
+
+    try:
+        result = await asyncio.to_thread(
+            push_project_to_github,
+            files,
+            req.repo_name or f"devteam-ai-{req.run_id}",
+            token,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "401" in msg or "Bad credentials" in msg:
+            raise HTTPException(status_code=401, detail="GitHub rejected that token. Check it and its scopes.")
+        raise HTTPException(status_code=502, detail=f"GitHub export failed: {msg[:300]}")
+    return result

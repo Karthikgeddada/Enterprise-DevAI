@@ -11,3 +11,6 @@ google-genai>=0.3.0
 # Only needed when PIPELINE_ENGINE=langgraph; the default custom engine has
 # no extra dependencies.
 langgraph>=0.2.0
+
+# Push a finished run to GitHub (services/github_export.py, POST /export/github).
+pygithub>=2.4.0

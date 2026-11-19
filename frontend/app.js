@@ -188,6 +188,7 @@ async function openHistoryRun(runId) {
             (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
         $("downloadBtn").classList.remove("hidden");
         $("shareBtn").classList.remove("hidden"); // a history run can be shared too
+        $("pushBtn").classList.remove("hidden"); // ...and pushed to GitHub
         $("runLabel").textContent = "PROJECT FROM HISTORY";
         $("emptyExplorer").classList.add("hidden");
         renderTree(new Map());
@@ -290,6 +291,7 @@ $("newProjectBtn").addEventListener("click", () => {
 function resetUI(isContinue) {
     clearError();
     $("shareBtn").classList.add("hidden");
+    $("pushBtn").classList.add("hidden");
     document.querySelectorAll("#stepsList li").forEach((li) => (li.className = ""));
     $("logsTerminal").textContent = isContinue
         ? "Applying your change…"
@@ -490,7 +492,8 @@ async function fetchFiles() {
             (window.API_KEY ? `?api_key=${encodeURIComponent(window.API_KEY)}` : "");
         $("downloadBtn").classList.remove("hidden");
         $("shareBtn").classList.remove("hidden");
-        $("runLabel").textContent = "GENERATED PROJECT";
+        $("pushBtn").classList.remove("hidden");
+        $("runLabel").textContent = "GENERATED PROJECT"; // fresh build: exportable too
         $("emptyExplorer").classList.add("hidden");
 
         renderTree(changeMap);
@@ -774,4 +777,84 @@ async function loadSharedRun() {
     }
 }
 loadSharedRun();
+
+/* ---------- Push to GitHub (user's PAT, POST /export/github) ---------- */
+let ghDone = false;
+
+function openGhModal() {
+    if (!currentRunId) return;
+    ghDone = false;
+    $("ghRepoName").value = `devteam-ai-${currentRunId}`;
+    $("ghToken").value = "";
+    const btn = $("ghPush");
+    btn.disabled = false;
+    btn.textContent = "Push";
+    $("ghModalTitle").textContent = "Push to GitHub";
+    const desc = $("ghModalDesc");
+    desc.textContent = "Creates a public repo under your GitHub account with this project's files. Your token is used once and never stored.";
+    $("ghModal").classList.remove("hidden");
+    $("ghToken").focus();
+}
+
+function closeGhModal() {
+    $("ghModal").classList.add("hidden");
+}
+
+$("pushBtn").addEventListener("click", openGhModal);
+$("ghCancel").addEventListener("click", closeGhModal);
+$("ghModal").addEventListener("click", (e) => {
+    if (e.target === $("ghModal")) closeGhModal();
+});
+$("ghToken").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("ghPush").click();
+});
+
+$("ghPush").addEventListener("click", async () => {
+    if (ghDone) {
+        closeGhModal();
+        return;
+    }
+    const token = $("ghToken").value.trim();
+    if (!token) {
+        $("ghToken").focus();
+        return;
+    }
+    const btn = $("ghPush");
+    btn.disabled = true;
+    btn.textContent = "Pushing…";
+    try {
+        const headers = { "Content-Type": "application/json" };
+        if (window.API_KEY) headers["X-API-Key"] = window.API_KEY;
+        const res = await fetch(`${API}/export/github`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                run_id: currentRunId,
+                repo_name: $("ghRepoName").value.trim() || undefined,
+                token,
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Export failed (${res.status})`);
+
+        // Success: swap the modal body for the repo link.
+        ghDone = true;
+        $("ghModalTitle").textContent = "Pushed!";
+        const desc = $("ghModalDesc");
+        desc.textContent = "Your project is live at ";
+        const link = document.createElement("a");
+        link.href = data.repo_url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = data.repo_url;
+        desc.appendChild(link);
+        btn.disabled = false;
+        btn.textContent = "Close";
+        setStatus(`Pushed to GitHub: ${data.repo_name}`);
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Push";
+        showError(err.message || "GitHub export failed.");
+    }
+});
 
