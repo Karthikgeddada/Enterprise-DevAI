@@ -1,6 +1,6 @@
 {
     "$schema": "https://openapi.vercel.sh/vercel.json",
-    "outputDirectory": "webui",
+    "outputDirectory": "frontend",
     "cleanUrls": true,
     "headers": [
         {
