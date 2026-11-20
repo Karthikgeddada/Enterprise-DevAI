@@ -671,7 +671,13 @@ function monacoLanguage(ext) {
 
 function ensureMonaco(ready) {
     if (window.monaco) return ready(true);
-    if (monacoFailed || !window.require) return ready(false);
+    if (monacoFailed) return ready(false);
+    // Loader never arrived (CDN blocked/offline): go read-only ONCE — no retry loop.
+    if (typeof window.require !== "function" ||
+        typeof window.require.config !== "function") {
+        monacoFailed = true;
+        return ready(false);
+    }
     try {
         window.require.config({ paths: { vs: `${MONACO_CDN}/vs` } });
         window.require(["vs/editor/editor.main"],
@@ -697,8 +703,15 @@ function mountMonaco(file, ext) {
     }
     activeMonacoPath = file.path;
     ensureMonaco((ok) => {
-        if (!ok) { mountMonaco(file, ext); return; } // failed: read-only path
         if (activeMonacoPath !== file.path) return;  // user switched files meanwhile
+        if (!ok) {
+            // Monaco unavailable: read-only fallback — no recursion, no crash.
+            host.classList.add("hidden");
+            wrap.classList.remove("hidden");
+            $("editBar").classList.add("hidden");
+            activeMonacoPath = null;
+            return;
+        }
         if (!monacoEditor) {
             monacoEditor = window.monaco.editor.create(host, {
                 automaticLayout: true,
