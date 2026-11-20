@@ -638,6 +638,48 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
     .diff-table td { padding: 0 8px; font-size: 11px; }
 }
 
+.pr-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 4px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.pr-toggle input { accent-color: var(--accent); }
+
+/* In-browser editor (Monaco) + edit bar */
+#monacoHost {
+    height: 100%;
+    min-height: 320px;
+    width: 100%;
+}
+.edit-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.dirty-count {
+    font-size: 12px;
+    color: var(--muted, #888);
+}
+.tree-file.dirty .tree-name,
+.tree-file.dirty span:last-child {
+    color: var(--warning, #e6b450);
+}
+.tree-file.dirty::after {
+    content: " ✎";
+    color: var(--warning, #e6b450);
+    font-size: 11px;
+}
+.btn-sm {
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
 /* Template gallery: one-click prompt chips above the prompt box */
 .template-bar {
     display: flex;

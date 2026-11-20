@@ -111,7 +111,12 @@
             </section>
 
             <section class="view code-view hidden" id="codeView">
-                <pre class="code-wrap"><code id="codeViewer">Select a file to preview</code></pre>
+                <div class="edit-bar hidden" id="editBar">
+                    <span class="dirty-count hidden" id="dirtyCount"></span>
+                    <button class="btn primary btn-sm hidden" id="continueEditsBtn">Continue with my edits</button>
+                </div>
+                <div id="monacoHost" class="hidden"></div>
+                <pre class="code-wrap" id="codeWrap"><code id="codeViewer">Select a file to preview</code></pre>
             </section>
             <section class="view diff-view hidden" id="diffView">
                 <div class="diff-head"><span>before</span><span>after</span></div>
@@ -180,6 +185,10 @@ Describe a project to begin.</div>
                 project's files. Your token is used once and never stored.</p>
             <label for="ghRepoName">Repo name</label>
             <input id="ghRepoName" type="text" autocomplete="off" placeholder="devteam-ai-project">
+            <label class="pr-toggle" for="ghPrMode">
+                <input type="checkbox" id="ghPrMode">
+                Open as pull request on an existing repo ("owner/name")
+            </label>
             <label for="ghToken">Personal access token</label>
             <input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_… or ghp_…">
             <p class="dim hint-xs">Classic token with "repo" scope, or fine-grained with "Contents: write".</p>
@@ -191,6 +200,7 @@ Describe a project to begin.</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/diff@8.0.1/dist/diff.min.js"></script>
     <script type="module">
         // Mermaid (architecture diagrams). Loads async; if it never arrives

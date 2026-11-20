@@ -12,6 +12,13 @@ let activeIndex = -1;
 // Continue-mode diffing: snapshot of the project files before the last
 // update, plus per-path change tags ("new"/"mod") for badges and the diff view.
 let previousFilesSnapshot = [];
+// In-browser editing (Monaco): path -> latest editor content. Only entries
+// that actually differ from the generated file are sent as edited_files.
+let editorDirty = new Map();
+let pendingEditedFiles = null;
+let monacoEditor = null;
+let monacoFailed = false;   // CDN unavailable: fall back to read-only view
+let activeMonacoPath = null;
 let fileChangeMap = new Map();
 
 const $ = (id) => document.getElementById(id);
@@ -305,6 +312,8 @@ function resetUI(isContinue) {
     $("promptInput").placeholder = "Describe the project you want to build…";
     $("newProjectBtn").classList.add("hidden");
     continueMode = false;
+    editorDirty.clear(); // a new build must not inherit stale user edits
+    syncDirtyUI(); // note: pendingEditedFiles is cleared after the request is sent
     const btn = $("generateBtn");
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Building…';
@@ -343,6 +352,9 @@ $("generateBtn").addEventListener("click", async () => {
     try {
         const body = { prompt };
         if (isContinue) body.base_run_id = lastCompletedRunId;
+        if (pendingEditedFiles && pendingEditedFiles.length) {
+            body.edited_files = pendingEditedFiles; // user's Monaco edits ride along
+        }
         const model = $("modelSelect").value || "auto";
         if (model && model !== "auto") body.provider = model;
         const headers = { "Content-Type": "application/json" };
@@ -357,6 +369,7 @@ $("generateBtn").addEventListener("click", async () => {
             throw new Error(err.detail || `Request failed (${res.status})`);
         }
         const data = await res.json();
+        pendingEditedFiles = null; // staged edits were consumed by this run
         currentRunId = data.run_id;
         // Prefer live SSE updates; 2s polling stays as automatic fallback.
         if (!startStream(currentRunId)) {
@@ -504,6 +517,8 @@ async function fetchFiles() {
         $("emptyExplorer").classList.add("hidden");
 
         renderTree(changeMap);
+        editorDirty.clear(); // fresh files from the run replace any local edits
+        syncDirtyUI();
         const firstChanged = allGeneratedFiles.findIndex((f) => changeMap.has(f.path));
         previewCode(firstChanged >= 0 ? firstChanged : 0);
         setStatus(`Complete · ${allGeneratedFiles.length} files${changedCount ? ` · ${changedCount} changed` : ""}`);
@@ -637,7 +652,136 @@ function previewCode(index) {
     } else if (window.hljs) {
         try { hljs.highlightElement(viewer); } catch (e) { /* non-fatal */ }
     }
+
+    mountMonaco(file, ext);
 }
+
+/* ---------- In-browser editor (Monaco, Feature: edit before continue) ---------- */
+const MONACO_CDN = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min";
+
+function monacoLanguage(ext) {
+    const map = {
+        py: "python", js: "javascript", jsx: "javascript", ts: "typescript",
+        tsx: "typescript", html: "html", css: "css", json: "json",
+        md: "markdown", yml: "yaml", yaml: "yaml", xml: "xml",
+        sh: "shell", bash: "shell", sql: "sql", txt: "plaintext",
+    };
+    return map[ext] || "plaintext";
+}
+
+function ensureMonaco(ready) {
+    if (window.monaco) return ready(true);
+    if (monacoFailed || !window.require) return ready(false);
+    try {
+        window.require.config({ paths: { vs: `${MONACO_CDN}/vs` } });
+        window.require(["vs/editor/editor.main"],
+            () => ready(!!window.monaco),
+            () => { monacoFailed = true; ready(false); }
+        );
+    } catch (e) {
+        monacoFailed = true;
+        ready(false);
+    }
+}
+
+function mountMonaco(file, ext) {
+    const host = $("monacoHost");
+    const wrap = $("codeWrap");
+    if (monacoFailed || (ext === "mmd" && window.mermaid)) {
+        // Read-only fallback (or diagram preview): keep the highlighted <pre>.
+        host.classList.add("hidden");
+        wrap.classList.remove("hidden");
+        $("editBar").classList.add("hidden");
+        activeMonacoPath = null;
+        return;
+    }
+    activeMonacoPath = file.path;
+    ensureMonaco((ok) => {
+        if (!ok) { mountMonaco(file, ext); return; } // failed: read-only path
+        if (activeMonacoPath !== file.path) return;  // user switched files meanwhile
+        if (!monacoEditor) {
+            monacoEditor = window.monaco.editor.create(host, {
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                theme: "vs-dark",
+                scrollBeyondLastLine: false,
+            });
+            monacoEditor.onDidChangeModelContent(() => {
+                if (!activeMonacoPath || !monacoEditor.getModel()) return;
+                const original = originalContent(activeMonacoPath);
+                const value = monacoEditor.getValue();
+                if (value === original) editorDirty.delete(activeMonacoPath);
+                else editorDirty.set(activeMonacoPath, value);
+                syncDirtyUI();
+            });
+        }
+        wrap.classList.add("hidden");
+        host.classList.remove("hidden");
+        $("editBar").classList.remove("hidden");
+        const model = window.monaco.editor.createModel(
+            // (No ?? here: esprima, the syntax gate, predates ES2020.)
+            editorDirty.has(file.path) ? editorDirty.get(file.path) : file.content,
+            monacoLanguage(ext)
+        );
+        monacoEditor.setModel(model);
+        syncDirtyUI();
+    });
+}
+
+function originalContent(path) {
+    const f = allGeneratedFiles.find((f) => f.path === path);
+    return f ? f.content : "";
+}
+
+function collectEditedFiles() {
+    // Only entries the user actually changed (reverted edits drop out).
+    return [...editorDirty.entries()]
+        .filter(([path, content]) => content !== originalContent(path))
+        .map(([path, content]) => ({ path, content }));
+}
+
+function syncDirtyUI() {
+    const count = collectEditedFiles().length;
+    refreshDirtyBadges();
+    const btn = $("continueEditsBtn");
+    btn.classList.toggle("hidden", count === 0);
+    btn.textContent = count === 1
+        ? "Continue with my edit (1 file)"
+        : `Continue with my edits (${count} files)`;
+}
+
+function refreshDirtyBadges() {
+    document.querySelectorAll(".tree-file").forEach((el) => {
+        const f = allGeneratedFiles[Number(el.dataset.idx)];
+        const dirty = !!f && editorDirty.has(f.path) && editorDirty.get(f.path) !== f.content;
+        el.classList.toggle("dirty", dirty);
+    });
+}
+
+function clearEditorEdits() {
+    editorDirty.clear();
+    pendingEditedFiles = null;
+    syncDirtyUI();
+}
+
+$("continueEditsBtn").addEventListener("click", () => {
+    const edits = collectEditedFiles();
+    if (!edits.length) return;
+    pendingEditedFiles = edits;
+    // The edited snapshot becomes the base for the next run.
+    continueMode = true;
+    lastCompletedRunId = currentRunId;
+    $("promptInput").placeholder =
+        "Describe what to change — your edits will be applied first…";
+    $("newProjectBtn").classList.remove("hidden");
+    $("promptInput").focus();
+    setStatus(
+        edits.length === 1
+            ? "1 edited file staged — describe the change, then Generate."
+            : `${edits.length} edited files staged — describe the change, then Generate.`
+    );
+});
 
 /* ---------- Mermaid diagram rendering (ARCHITECTURE.mmd files) ---------- */
 async function renderMermaid(content) {
@@ -1076,12 +1220,12 @@ function openGhModal() {
     ghDone = false;
     $("ghRepoName").value = `devteam-ai-${currentRunId}`;
     $("ghToken").value = "";
+    $("ghPrMode").checked = false; // default: create a new repo
+    syncGhMode();
     const btn = $("ghPush");
     btn.disabled = false;
     btn.textContent = "Push";
     $("ghModalTitle").textContent = "Push to GitHub";
-    const desc = $("ghModalDesc");
-    desc.textContent = "Creates a public repo under your GitHub account with this project's files. Your token is used once and never stored.";
     $("ghModal").classList.remove("hidden");
     $("ghToken").focus();
 }
@@ -1098,6 +1242,7 @@ $("ghModal").addEventListener("click", (e) => {
 $("ghToken").addEventListener("keydown", (e) => {
     if (e.key === "Enter") $("ghPush").click();
 });
+$("ghPrMode").addEventListener("change", syncGhMode);
 
 $("ghPush").addEventListener("click", async () => {
     if (ghDone) {
@@ -1122,25 +1267,27 @@ $("ghPush").addEventListener("click", async () => {
                 run_id: currentRunId,
                 repo_name: $("ghRepoName").value.trim() || undefined,
                 token,
+                mode: $("ghPrMode").checked ? "pr" : undefined,
             }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Export failed (${res.status})`);
 
-        // Success: swap the modal body for the repo link.
+        // Success: swap the modal body for the repo/PR link.
         ghDone = true;
-        $("ghModalTitle").textContent = "Pushed!";
+        const isPr = !!data.pr_url;
+        $("ghModalTitle").textContent = isPr ? "Pull request opened!" : "Pushed!";
         const desc = $("ghModalDesc");
-        desc.textContent = "Your project is live at ";
+        desc.textContent = isPr ? "Review and merge at " : "Your project is live at ";
         const link = document.createElement("a");
-        link.href = data.repo_url;
+        link.href = data.pr_url || data.repo_url;
         link.target = "_blank";
         link.rel = "noopener";
-        link.textContent = data.repo_url;
+        link.textContent = data.pr_url || data.repo_url;
         desc.appendChild(link);
         btn.disabled = false;
         btn.textContent = "Close";
-        setStatus(`Pushed to GitHub: ${data.repo_name}`);
+        setStatus(isPr ? `PR opened on ${data.repo_name}` : `Pushed to GitHub: ${data.repo_name}`);
     } catch (err) {
         btn.disabled = false;
         btn.textContent = "Push";

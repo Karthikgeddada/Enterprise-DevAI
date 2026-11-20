@@ -266,8 +266,33 @@ async def _run_custom_pipeline(run_id: str, prompt: str, base_files: Optional[Li
         log(f"FAILED: {e}")
 
 
+def _sanitize_edited_files(edited_files) -> List[Dict[str, str]]:
+    """Validate user-edited files from the in-browser editor. Returns a
+    clean [{path, content}] list; raises ValueError so bad input becomes
+    a 400 instead of a failed run."""
+    if not edited_files:
+        return []
+    if not isinstance(edited_files, list):
+        raise ValueError("edited_files must be a list of {path, content} objects.")
+    if len(edited_files) > 50:
+        raise ValueError("Too many edited files (max 50).")
+    out: List[Dict[str, str]] = []
+    for e in edited_files:
+        if not isinstance(e, dict):
+            raise ValueError("Each edited file must be an object with 'path' and 'content'.")
+        path = str(e.get("path") or "").strip()
+        content = e.get("content")
+        if not path or content is None:
+            raise ValueError("Each edited file needs a non-empty 'path' and 'content'.")
+        if path.startswith("/") or "\\" in path or ".." in path.split("/"):
+            raise ValueError(f"Invalid file path: {path}")
+        out.append({"path": path, "content": str(content)})
+    return out
+
+
 async def start_generation(prompt: str, base_run_id: Optional[str] = None,
-                           provider: Optional[str] = None) -> str:
+                           provider: Optional[str] = None,
+                           edited_files: Optional[List[Dict[str, str]]] = None) -> str:
     """Start a generation run in the background. Returns the run id.
 
     With base_run_id, the run continues development on that completed run's
@@ -301,6 +326,19 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None,
         if not base_files:
             raise ValueError("Previous run has no files to continue from.")
 
+    # Merge user edits (in-browser editor) onto the base snapshot — edits
+    # win by path; edits without a base_run_id seed a fresh project.
+    edits = _sanitize_edited_files(edited_files)
+    if edits:
+        if base_files is None:
+            base_files = []
+        by_path = {f["path"]: i for i, f in enumerate(base_files)}
+        for e in edits:
+            if e["path"] in by_path:
+                base_files[by_path[e["path"]]]["content"] = e["content"]
+            else:
+                base_files.append(dict(e))
+
     run_id = uuid.uuid4().hex[:12]
     # ContextVar BEFORE create_task: the pipeline task (and every agent
     # call inside it) inherits this value — zero agent-signature churn.
@@ -308,7 +346,8 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None,
     _runs[run_id] = {
         "status": "starting",
         "logs": ["Run started.",
-                 f"Provider: {provider or 'auto'}."],
+                 f"Provider: {provider or 'auto'}."] +
+                ([f"User edits applied: {len(edits)} file(s)."] if edits else []),
         "files": [],
         "prompt": prompt.strip(),
         "started_at": time.time(),  # scorecard duration
