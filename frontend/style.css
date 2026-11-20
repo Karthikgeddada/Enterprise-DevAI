@@ -364,7 +364,7 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 
     /* explorer footer + status bar */
     .panel-foot { padding: 12px 12px calc(14px + env(safe-area-inset-bottom)); }
-    .panel-foot .btn-ghost { display: block; text-align: center; padding: 10px 16px; }
+    .panel-foot > .btn-ghost { display: block; text-align: center; padding: 10px 16px; }
     .statusbar { padding: 0 10px; font-size: 11px; }
 }
 
@@ -476,9 +476,28 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4
 }
 .run-actions { margin-top: 6px; }
 
-/* ---- Explorer footer: Download ZIP + Copy share link + Push to GitHub ---- */
-.foot-actions { display: flex; gap: 8px; }
-.foot-actions .btn-ghost { flex: 1; text-align: center; }
+/* ---- Explorer footer: Download ZIP / VS Code / Share link / Push to GitHub ---- */
+.foot-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.foot-actions .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    flex: none;
+    padding: 9px 8px;
+    border-radius: var(--radius-control);
+    background: var(--tile);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.foot-actions .btn-ghost svg { width: 13px; height: 13px; flex: none; }
+.foot-actions .btn-ghost:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
 
 /* ---- Scorecard (build summary tab) ---- */
 .score-scroll {
