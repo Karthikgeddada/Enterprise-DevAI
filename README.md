@@ -33,7 +33,7 @@ docs/               # Architecture, security model, deployment guide
 ```bash
 cd backend
 pip install -r requirements.txt -r requirements-web.txt
-cp .env.example .env        # then add your GEMINI_API_KEY
+cp .env.example .env        # then add your OPENROUTER_API_KEY
 uvicorn app.main:app --reload
 # open http://localhost:8000
 ```
@@ -52,8 +52,8 @@ Dual pipeline engines: the default custom engine or a LangGraph StateGraph (`PIP
 
 | Provider | Requires | Notes |
 |---|---|---|
-| Google Gemini | API key | Default (`gemini-3.5-flash-lite`) |
-| OpenRouter | API key | OpenAI-compatible |
+| OpenRouter | API key | **Default** — one key, 300+ models, per-key spend limits; `:free` model ids cost $0 |
+| Google Gemini | API key | Fallback (`gemini-3.5-flash-lite`) |
 | Groq | API key | OpenAI-compatible |
 | DeepSeek | API key | OpenAI-compatible |
 | Ollama | Local server | No key required |
@@ -69,13 +69,13 @@ python -m pytest -v
 
 ## Deployment
 
-* **Backend (Render):** `render.yaml` blueprint — builds from `backend/`, runs `uvicorn app.main:app`. Set `GEMINI_API_KEY` (and optionally `PIPELINE_ENGINE`, `API_KEY`, `ALLOWED_ORIGIN`) in the dashboard.
+* **Backend (Render):** `render.yaml` blueprint — builds from `backend/`, runs `uvicorn app.main:app`. Set `OPENROUTER_API_KEY` (and optionally `PIPELINE_ENGINE`, `API_KEY`, `ALLOWED_ORIGIN`) in the dashboard.
 * **Frontend (Vercel):** serves `frontend/` per `vercel.json`. The FastAPI backend also serves the same frontend at `/`, so one Render deploy alone is a working demo.
 * **Docker (self-host, one command):**
 
 ```bash
 docker build -t devteam-ai .
-docker run -p 8000:8000 -e GEMINI_API_KEY=your_key -v devteam-data:/data devteam-ai
+docker run -p 8000:8000 -e OPENROUTER_API_KEY=your_key -v devteam-data:/data devteam-ai
 # open http://localhost:8000
 ```
 
