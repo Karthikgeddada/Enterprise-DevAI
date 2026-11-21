@@ -292,7 +292,8 @@ def _sanitize_edited_files(edited_files) -> List[Dict[str, str]]:
 
 async def start_generation(prompt: str, base_run_id: Optional[str] = None,
                            provider: Optional[str] = None,
-                           edited_files: Optional[List[Dict[str, str]]] = None) -> str:
+                           edited_files: Optional[List[Dict[str, str]]] = None,
+                           model_tier: Optional[str] = None) -> str:
     """Start a generation run in the background. Returns the run id.
 
     With base_run_id, the run continues development on that completed run's
@@ -302,6 +303,9 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None,
     With provider ("auto"/None = deployment default), the run's LLM calls
     all go through that provider — threaded via a ContextVar set before
     asyncio.create_task, so every agent in the pipeline task inherits it.
+
+    model_tier (OpenRouter only): "free" or "premium" — picks the free or
+    paid OpenRouter model for this run; None = OPENROUTER_MODEL default.
     """
     if not prompt or not prompt.strip():
         raise ValueError("Prompt is required.")
@@ -314,6 +318,9 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None,
         provider = ""
     elif provider not in valid:
         raise ValueError(f"Unknown provider '{provider}'. Available: {sorted(valid)}")
+
+    if model_tier is not None and model_tier not in ("free", "premium"):
+        raise ValueError("model_tier must be 'free' or 'premium'.")
 
     base_files: Optional[List[Dict[str, str]]] = None
     if base_run_id:
@@ -343,10 +350,13 @@ async def start_generation(prompt: str, base_run_id: Optional[str] = None,
     # ContextVar BEFORE create_task: the pipeline task (and every agent
     # call inside it) inherits this value — zero agent-signature churn.
     set_run_provider(provider)
+    from config.llm_config import set_run_model_tier
+    set_run_model_tier(model_tier or "")
     _runs[run_id] = {
         "status": "starting",
         "logs": ["Run started.",
                  f"Provider: {provider or 'auto'}."] +
+                ([f"Model tier: {model_tier}."] if model_tier else []) +
                 ([f"User edits applied: {len(edits)} file(s)."] if edits else []),
         "files": [],
         "prompt": prompt.strip(),

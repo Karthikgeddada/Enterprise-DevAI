@@ -193,3 +193,90 @@ def test_contextvar_inherited_by_asyncio_task(monkeypatch):
         return await task
 
     assert asyncio.run(parent()) == "from-gemini"
+
+
+# ---------------------------------------------- OpenRouter model tiers
+def _fake_openrouter_client(captured):
+    """Fake OpenAI-compatible client; records the create() kwargs."""
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _M:
+                content = "tier-ok"
+
+            class _C:
+                message = _M()
+
+            class _R:
+                choices = [_C()]
+
+            return _R()
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    return FakeClient()
+
+
+def _run_openrouter_tier(monkeypatch, tier, captured):
+    import config.llm_config as lc
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(lc, "get_async_client",
+                        lambda: (_fake_openrouter_client(captured), None))
+
+    async def _inner():
+        set_run_provider("openrouter")
+        lc.set_run_model_tier(tier)
+        out = await llm_config.generate_response("hi")
+        lc.set_run_model_tier("")
+        set_run_provider("")
+        return out
+
+    return asyncio.run(_inner())
+
+
+def test_openrouter_default_tier_uses_default_model(monkeypatch):
+    captured = {}
+    out = _run_openrouter_tier(monkeypatch, "", captured)
+    assert out == "tier-ok"
+    assert captured["model"] == llm_config.OPENROUTER_MODEL
+
+
+def test_openrouter_free_tier_uses_free_model(monkeypatch):
+    captured = {}
+    out = _run_openrouter_tier(monkeypatch, "free", captured)
+    assert out == "tier-ok"
+    assert captured["model"] == llm_config.OPENROUTER_FREE_MODEL
+
+
+def test_openrouter_premium_tier_uses_premium_model(monkeypatch):
+    captured = {}
+    out = _run_openrouter_tier(monkeypatch, "premium", captured)
+    assert out == "tier-ok"
+    assert captured["model"] == llm_config.OPENROUTER_PREMIUM_MODEL
+
+
+def test_start_generation_rejects_bad_model_tier(client):
+    r = client.post("/generate", json={"prompt": "build a todo app", "model_tier": "ultra"})
+    assert r.status_code == 400
+    assert "free" in r.json()["detail"]
+
+
+def test_start_generation_accepts_premium_tier(client, monkeypatch):
+    """model_tier='premium' passes validation and reaches the run logs."""
+    import services.generation_service as gs
+
+    captured = {}
+    monkeypatch.setattr(gs, "_run_pipeline",
+                        lambda run_id, prompt, base_files=None: _async_noop(captured, run_id))
+    r = client.post("/generate", json={"prompt": "build a todo app", "model_tier": "premium"})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+    run = gs.get_run(run_id)
+    assert "Model tier: premium." in run["logs"]
+
+
+async def _async_noop(captured, run_id):
+    captured["run_id"] = run_id

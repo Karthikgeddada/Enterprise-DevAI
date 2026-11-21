@@ -357,6 +357,9 @@ $("generateBtn").addEventListener("click", async () => {
         }
         const model = $("modelSelect").value || "auto";
         if (model && model !== "auto") body.provider = model;
+        // OpenRouter model tier: "free" (default, $0) or "premium".
+        const tierVal = $("tierSelect").value;
+        if (!$("tierSelect").classList.contains("hidden") && tierVal) body.model_tier = tierVal;
         const headers = { "Content-Type": "application/json" };
         if (window.API_KEY) headers["X-API-Key"] = window.API_KEY;
         const res = await fetch(`${API}/generate`, {
@@ -1090,15 +1093,48 @@ async function initModelSelect() {
         if (saved && choices.some((c) => c.id === saved)) sel.value = saved;
         sel.addEventListener("change", () => {
             localStorage.setItem("dtai-provider", sel.value);
+            syncTierSelect();
         });
 
         // Only show the selector when there is a real choice to make.
         if (choices.length > 1) sel.classList.remove("hidden");
+        initTierSelect();
     } catch (e) {
         /* selector stays hidden — provider falls back to server default */
     }
 }
 initModelSelect();
+
+/* ---------- Model tier selector (OpenRouter: free default, premium opt-in) ---------- */
+function initTierSelect() {
+    const tier = $("tierSelect");
+    tier.innerHTML = "";
+    for (const [value, label] of [
+        ["free", "Model: Free (Nemotron 3 Ultra)"],
+        ["premium", "Model: Premium (DeepSeek Flash)"],
+    ]) {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        tier.appendChild(opt);
+    }
+    const saved = localStorage.getItem("dtai-tier");
+    if (saved === "free" || saved === "premium") tier.value = saved;
+    tier.addEventListener("change", () => {
+        localStorage.setItem("dtai-tier", tier.value);
+    });
+    syncTierSelect();
+}
+
+function syncTierSelect() {
+    // The tier only applies to OpenRouter runs — hide it when another
+    // provider is selected (or when providers aren't configurable).
+    const provider = $("modelSelect").value || "auto";
+    const openrouterChosen = provider === "auto" || provider === "openrouter";
+    const openrouterConfigured = $("modelSelect").options.length > 1;
+    $("tierSelect").classList.toggle("hidden",
+        !(openrouterChosen && openrouterConfigured));
+}
 
 /* ---------- Template gallery (GET /templates, one-click prompts) ---------- */
 async function initTemplates() {

@@ -28,6 +28,19 @@ def get_run_provider() -> str:
     return _run_provider.get()
 
 
+# Per-run model tier for OpenRouter ("free" | "premium" | "" = OPENROUTER_MODEL).
+_run_model_tier: ContextVar[str] = ContextVar("run_model_tier", default="")
+
+
+def set_run_model_tier(tier: str) -> None:
+    """Set the OpenRouter model tier for the current run chain; "" clears it."""
+    _run_model_tier.set(tier or "")
+
+
+def get_run_model_tier() -> str:
+    return _run_model_tier.get()
+
+
 def provider_choices() -> list:
     """Provider options a client may choose per run: 'auto' plus every
     provider with credentials configured on this deployment."""
@@ -47,7 +60,9 @@ def provider_choices() -> list:
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash-1017")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")  # $0 default
+OPENROUTER_FREE_MODEL = os.getenv("OPENROUTER_FREE_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+OPENROUTER_PREMIUM_MODEL = os.getenv("OPENROUTER_PREMIUM_MODEL", "deepseek/deepseek-v4.1-flash-1017")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")  # keep current: Google retires -latest aliases
@@ -143,18 +158,22 @@ async def generate_response(prompt_or_messages) -> str:
         except Exception as e:
             raise Exception(f"Gemini API error: {str(e)}")  # same error surface as before
 
-    # OpenRouter (default): one key, many models
+    # OpenRouter (default): one key, many models; per-run tier picks free or premium
     if provider == "openrouter":
         from providers.errors import ProviderError, classify_error
         from providers.retry import RetryPolicy
 
         retry = RetryPolicy(max_retries=4)
+        tier = get_run_model_tier()
+        model_id = (OPENROUTER_PREMIUM_MODEL if tier == "premium"
+                    else OPENROUTER_FREE_MODEL if tier == "free"
+                    else OPENROUTER_MODEL)
 
         async def _openrouter_call() -> str:
             try:
                 client, _ = get_async_client()
                 response = await client.chat.completions.create(
-                    model=OPENROUTER_MODEL,
+                    model=model_id,
                     messages=messages,
                     temperature=0.2,
                     max_tokens=4096

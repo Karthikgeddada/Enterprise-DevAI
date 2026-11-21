@@ -23,6 +23,7 @@ class PromptRequest(BaseModel):
     prompt: str
     base_run_id: Optional[str] = None  # set to continue developing an existing project
     provider: Optional[str] = None  # per-run LLM provider ("auto"/None = deployment default)
+    model_tier: Optional[str] = None  # OpenRouter only: "free" or "premium" (None = default model)
     edited_files: Optional[List[Dict[str, str]]] = None  # in-browser editor edits [{path, content}]
 
 class GithubExportRequest(BaseModel):
@@ -42,7 +43,8 @@ async def list_models():
 async def generate_project(req: PromptRequest):
     try:
         run_id = await start_generation(
-            req.prompt, req.base_run_id, req.provider, req.edited_files
+            req.prompt, req.base_run_id, req.provider, req.edited_files,
+            req.model_tier,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

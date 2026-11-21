@@ -19,7 +19,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     _display_name = "OpenRouter"
     _api_key_env = "OPENROUTER_API_KEY"
     _base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    _default_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash-1017")
+    _default_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")  # $0
     # Model ids + pricing verified against the live OpenRouter catalog (Nov 2026);
     # ids retire often - re-check https://openrouter.ai/api/v1/models when changing.
     _models = [

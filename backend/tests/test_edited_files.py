@@ -157,7 +157,7 @@ def client():
 def test_generate_endpoint_passes_edited_files(client, monkeypatch):
     seen = {}
 
-    async def fake_start(prompt, base_run_id=None, provider=None, edited_files=None):
+    async def fake_start(prompt, base_run_id=None, provider=None, edited_files=None, model_tier=None):
         seen.update(
             prompt=prompt, base_run_id=base_run_id,
             provider=provider, edited_files=edited_files,

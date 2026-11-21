@@ -16,7 +16,11 @@ services:
       - key: LLM_PROVIDER
         value: openrouter
       - key: OPENROUTER_MODEL
-        value: deepseek/deepseek-v4.1-flash-1017  # any id from openrouter.ai/models; router picks the cheapest provider
+        value: nvidia/nemotron-3-ultra-550b-a55b:free  # default = FREE ($0); premium is opt-in per run in the UI
+      - key: OPENROUTER_FREE_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+      - key: OPENROUTER_PREMIUM_MODEL
+        value: deepseek/deepseek-v4.1-flash-1017  # used when a run picks "Model: Premium"
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite  # keep current: Google retires -latest aliases
       # Primary provider: one OpenRouter key, many models, per-key spend limits
