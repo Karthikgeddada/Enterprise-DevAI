@@ -16,7 +16,7 @@ services:
       - key: LLM_PROVIDER
         value: openrouter
       - key: OPENROUTER_MODEL
-        value: meta-llama/llama-3.3-70b-instruct:free  # any id from openrouter.ai/models (:free = $0)
+        value: deepseek/deepseek-v4.1-flash-1017  # any id from openrouter.ai/models; router picks the cheapest provider
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite  # keep current: Google retires -latest aliases
       # Primary provider: one OpenRouter key, many models, per-key spend limits
